@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ROSMIL LEAGUE — Plataforma Oficial de Béisbol</title>
+  <link rel="icon" type="image/png" href="assets/rosmil-logo.png">
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="brand">
+        <img src="assets/rosmil-logo.png" alt="ROSMIL LEAGUE">
+        <div>
+          <b>ROSMIL</b>
+          <small>BASEBALL LEAGUE</small>
+        </div>
+      </div>
+      <nav id="nav">
+        <button data-view="home" class="active">⌂ &nbsp; Inicio</button>
+        <button data-view="season">▣ &nbsp; Temporada</button>
+        <button data-view="standings">◆ &nbsp; Posiciones</button>
+        <button data-view="games">⚾ &nbsp; Juegos</button>
+        <button data-view="teams">♙ &nbsp; Equipos</button>
+        <button data-view="players">◎ &nbsp; Jugadores</button>
+        <button data-view="stats">▥ &nbsp; Estadísticas</button>
+        <button data-view="leaders">★ &nbsp; Líderes</button>
+        <button data-view="history">◈ &nbsp; Historia</button>
+        <button data-view="admin">⚙ &nbsp; Administración</button>
+      </nav>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main">
+      <header class="top">
+        <strong>
+          <span class="mobile">ROSMIL LEAGUE / </span>
+          <span id="pageTitle">Inicio</span>
+        </strong>
+        <span id="storageStatus">Datos locales</span>
+      </header>
+
+      <div class="content">
+        <!-- View: Inicio -->
+        <section id="home" class="view active">
+          <div class="hero">
+            <div>
+              <div class="eyebrow">PLATAFORMA OFICIAL</div>
+              <h1>ROSMIL LEAGUE</h1>
+              <p>Administra temporadas, equipos, jugadores y juegos. El marcador no genera estadísticas: las estadísticas nacen exclusivamente del BAT LOG / iSCORE de cada partido.</p>
+            </div>
+            <img src="assets/rosmil-logo.png" alt="Logo ROSMIL">
+          </div>
+
+          <div class="cards">
+            <div class="card">
+              <small>Equipos</small>
+              <b id="homeTeams">0</b>
+            </div>
+            <div class="card">
+              <small>Jugadores</small>
+              <b id="homePlayers">0</b>
+            </div>
+            <div class="card">
+              <small>Temporadas</small>
+              <b id="homeSeasons">0</b>
+            </div>
+            <div class="card">
+              <small>Juegos</small>
+              <b id="homeGames">0</b>
+            </div>
+          </div>
+
+          <div class="grid2">
+            <div class="panel">
+              <div class="head">
+                <h2>Temporadas</h2>
+                <button class="btn" data-go="season">Ver temporadas</button>
+              </div>
+              <div id="homeSeasonList"></div>
+            </div>
+            <div class="panel">
+              <div class="head">
+                <h2>Últimos juegos</h2>
+                <button class="btn" data-go="games">Ver juegos</button>
+              </div>
+              <div id="homeGamesList"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- View: Temporada -->
+        <section id="season" class="view">
+          <div class="panel">
+            <div class="head">
+              <h2>Temporadas</h2>
+              <button class="btn red" data-modal="seasonModal">+ Crear temporada</button>
+            </div>
+            <p class="muted">Aquí defines si la competencia es Liga o Eliminatoria. Los partidos y sus BAT LOG se registran después en Juegos.</p>
+            <div id="seasonList"></div>
+          </div>
+        </section>
+
+        <!-- View: Posiciones -->
+        <section id="standings" class="view">
+          <div class="panel">
+            <div class="head">
+              <h2>Posiciones</h2>
+              <span class="muted">Se calculan a partir de los juegos con marcador final.</span>
+            </div>
+            <div id="standingsList"></div>
+          </div>
+        </section>
+
+        <!-- View: Juegos -->
+        <section id="games" class="view">
+          <div class="panel">
+            <div class="head">
+              <h2>Juegos</h2>
+              <button class="btn red" data-modal="gameModal">+ Registrar juego</button>
+            </div>
+            <div class="notice info">
+              Cada juego tiene dos partes: <b>resultado</b> y <b>BAT LOG / iSCORE</b>. El resultado sirve para la competencia; el BAT LOG es obligatorio para que las estadísticas individuales y los enfrentamientos bateador vs lanzador se actualicen.
+            </div>
+            <div id="gamesList"></div>
+          </div>
+        </section>
+
+        <!-- View: Equipos -->
+        <section id="teams" class="view">
+          <div class="panel">
+            <div class="head">
+              <h2>Equipos</h2>
+              <button class="btn red" data-modal="teamModal">+ Crear equipo</button>
+            </div>
+            <div id="teamsList"></div>
+          </div>
+        </section>
+
+        <!-- View: Jugadores -->
+        <section id="players" class="view">
+          <div class="panel">
+            <div class="head">
+              <h2>Jugadores</h2>
+              <button class="btn red" data-modal="playerModal">+ Crear jugador</button>
+            </div>
+            <div id="playersList"></div>
+          </div>
+        </section>
+
+        <!-- View: Estadísticas -->
+        <section id="stats" class="view">
+          <div class="panel">
+            <div class="head">
+              <h2>Estadísticas</h2>
+              <span class="muted">Solo apariciones registradas en BAT LOG / iSCORE.</span>
+            </div>
+            <div id="statsArea"></div>
+          </div>
+        </section>
+
+        <!-- View: Líderes -->
+        <section id="leaders" class="view">
+          <div class="panel">
+            <h2>Líderes</h2>
+            <div id="leadersArea"></div>
+          </div>
+        </section>
+
+        <!-- View: Historial -->
+        <section id="history" class="view">
+          <div class="panel">
+            <h2>Historial</h2>
+            <div id="historyArea"></div>
+          </div>
+        </section>
+
+        <!-- View: Administración -->
+        <section id="admin" class="view">
+          <div class="grid2">
+            <div class="panel">
+              <h2>Administración</h2>
+              <p class="muted">Administra los datos de la liga y abre las pantallas principales.</p>
+              <div class="actions">
+                <button class="btn red" data-modal="teamModal">Crear equipo</button>
+                <button class="btn red" data-modal="playerModal">Crear jugador</button>
+                <button class="btn red" data-modal="seasonModal">Crear temporada</button>
+                <button class="btn" data-modal="gameModal">Registrar juego</button>
+              </div>
+            </div>
+            <div class="panel">
+              <h2>Datos</h2>
+              <p class="muted">Los datos y fotos se guardan localmente en el navegador.</p>
+              <button class="btn danger" id="clearData">Borrar todos los datos</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- Modal: Equipo -->
+  <div class="modal" id="teamModal">
+    <div class="modalbox small">
+      <h2 id="teamModalTitle">Crear equipo</h2>
+      <form id="teamForm">
+        <input type="hidden" name="id">
+        <div class="formgrid">
+          <div class="field">
+            <label>Nombre del equipo</label>
+            <input name="name" required placeholder="Ej. Águilas Cibaeñas">
+          </div>
+          <div class="field">
+            <label>Ciudad</label>
+            <input name="city" placeholder="Ej. Santiago">
+          </div>
+          <div class="field">
+            <label>Manager</label>
+            <input name="manager" placeholder="Ej. Félix Fermín">
+          </div>
+          <div class="field">
+            <label>Logo del equipo</label>
+            <div class="uploadbox">
+              <input name="logoFile" type="file" accept="image/*">
+              <img id="teamPreview" class="preview" style="display:none" alt="Vista previa logo">
+            </div>
+          </div>
+        </div>
+        <div class="field" style="margin-top:14px">
+          <label>Jugadores que pertenecen al equipo</label>
+          <div id="teamRoster" class="roster"></div>
+        </div>
+        <div class="formactions">
+          <button type="submit" class="btn red">Guardar equipo</button>
+          <button type="button" class="btn close">Cancelar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Jugador -->
+  <div class="modal" id="playerModal">
+    <div class="modalbox small">
+      <h2 id="playerModalTitle">Crear jugador</h2>
+      <form id="playerForm">
+        <input type="hidden" name="id">
+        <div class="formgrid">
+          <div class="field">
+            <label>Nombre completo</label>
+            <input name="name" required placeholder="Ej. Juan Soto">
+          </div>
+          <div class="field">
+            <label>Número</label>
+            <input name="number" type="number" min="0" max="99" placeholder="22">
+          </div>
+          <div class="field">
+            <label>Equipo</label>
+            <select name="team" id="playerTeam"></select>
+          </div>
+          <div class="field">
+            <label>Rol del jugador</label>
+            <select name="role">
+              <option value="batter">Bateador</option>
+              <option value="pitcher">Lanzador</option>
+              <option value="two-way">Lanzador y bateador</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Posición defensiva</label>
+            <select name="position">
+              <option>Pitcher</option>
+              <option>Catcher</option>
+              <option>1B</option>
+              <option>2B</option>
+              <option>3B</option>
+              <option>SS</option>
+              <option>LF</option>
+              <option>CF</option>
+              <option>RF</option>
+              <option>DH</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Batea</label>
+            <select name="bats">
+              <option>Derecho</option>
+              <option>Izquierdo</option>
+              <option>Ambidiestro</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Tira</label>
+            <select name="throws">
+              <option>Derecho</option>
+              <option>Izquierdo</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Edad</label>
+            <input name="age" type="number" min="0" max="100" placeholder="25">
+          </div>
+          <div class="field">
+            <label>Altura</label>
+            <input name="height" placeholder="Ej. 6'2'' o 1.88m">
+          </div>
+          <div class="field">
+            <label>Peso</label>
+            <input name="weight" placeholder="Ej. 220 lbs">
+          </div>
+          <div class="field">
+            <label>Foto del jugador</label>
+            <div class="uploadbox">
+              <input name="photoFile" type="file" accept="image/*">
+              <img id="playerPreview" class="preview" style="display:none" alt="Vista previa foto">
+            </div>
+          </div>
+        </div>
+        <div id="pitcherFields" class="panel" style="margin-top:14px">
+          <b>Tipos de picheo</b>
+          <p class="muted">Los lanzamientos seleccionados aparecerán en el BAT LOG cuando este jugador sea pitcher.</p>
+          <div id="pitchTypes" class="checkboxgrid"></div>
+        </div>
+        <div class="formactions">
+          <button type="submit" class="btn red">Guardar jugador</button>
+          <button type="button" class="btn close">Cancelar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Temporada -->
+  <div class="modal" id="seasonModal">
+    <div class="modalbox small">
+      <h2 id="seasonModalTitle">Crear temporada</h2>
+      <form id="seasonForm">
+        <input type="hidden" name="id">
+        <div class="formgrid">
+          <div class="field">
+            <label>Nombre</label>
+            <input name="name" placeholder="Temporada 2026" required>
+          </div>
+          <div class="field">
+            <label>Tipo de competencia</label>
+            <select name="type" id="seasonType">
+              <option value="league">Liga</option>
+              <option value="elimination">Eliminatoria</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Inicio</label>
+            <input name="start" type="date">
+          </div>
+          <div class="field">
+            <label>Fin</label>
+            <input name="end" type="date">
+          </div>
+          <div class="field" id="leagueGamesField">
+            <label>Cantidad de juegos</label>
+            <input name="gamesCount" type="number" min="1" placeholder="Ej. 20">
+          </div>
+          <div class="field" id="bestOfField" style="display:none">
+            <label>Series al mejor de</label>
+            <select name="bestOf">
+              <option value="3">3 juegos</option>
+              <option value="5">5 juegos</option>
+              <option value="7">7 juegos</option>
+            </select>
+          </div>
+        </div>
+        <div id="seasonHelp" class="notice">Liga: indica la cantidad total de juegos que tendrá la competencia.</div>
+        <div class="formactions">
+          <button type="submit" class="btn red">Guardar temporada</button>
+          <button type="button" class="btn close">Cancelar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Serie Playoff -->
+  <div class="modal" id="seriesModal">
+    <div class="modalbox small">
+      <h2>Crear serie</h2>
+      <p class="muted">La serie pertenece a una temporada eliminatoria y usa el formato configurado de mejor de 3, 5 o 7.</p>
+      <form id="seriesForm">
+        <div class="formgrid">
+          <div class="field">
+            <label>Temporada</label>
+            <select name="season" id="seriesSeason"></select>
+          </div>
+          <div class="field">
+            <label>Equipo A</label>
+            <select name="teamA" id="seriesTeamA"></select>
+          </div>
+          <div class="field">
+            <label>Equipo B</label>
+            <select name="teamB" id="seriesTeamB"></select>
+          </div>
+        </div>
+        <div class="formactions">
+          <button type="submit" class="btn red">Crear serie</button>
+          <button type="button" class="btn close">Cancelar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Juego -->
+  <div class="modal" id="gameModal">
+    <div class="modalbox small">
+      <h2 id="gameModalTitle">Registrar juego</h2>
+      <div class="notice info">
+        Aquí solo se crea el partido y su resultado. Después debes abrir <b>BAT LOG / iSCORE</b> y registrar las apariciones al plato para llenar estadísticas.
+      </div>
+      <form id="gameForm">
+        <input type="hidden" name="id">
+        <div class="formgrid">
+          <div class="field">
+            <label>Temporada / competencia</label>
+            <select name="season" id="gameSeason" required></select>
+          </div>
+          <div class="field">
+            <label>Serie (si aplica)</label>
+            <select name="series" id="gameSeries"></select>
+          </div>
+          <div class="field">
+            <label>Número de juego</label>
+            <input name="gameNumber" type="number" min="1" placeholder="Ej. 1">
+          </div>
+          <div class="field">
+            <label>Fecha</label>
+            <input name="date" type="date" required>
+          </div>
+          <div class="field">
+            <label>Hora</label>
+            <input name="time" type="time">
+          </div>
+          <div class="field">
+            <label>Equipo local</label>
+            <select name="home" id="homeTeam" required></select>
+          </div>
+          <div class="field">
+            <label>Equipo visitante</label>
+            <select name="away" id="awayTeam" required></select>
+          </div>
+          <div class="field">
+            <label>Estadio</label>
+            <input name="stadium" placeholder="Ej. Estadio Quisqueya">
+          </div>
+          <div class="field">
+            <label>Marcador visitante</label>
+            <input name="awayScore" type="number" min="0" value="0">
+          </div>
+          <div class="field">
+            <label>Marcador local</label>
+            <input name="homeScore" type="number" min="0" value="0">
+          </div>
+        </div>
+        <div class="formactions">
+          <button type="submit" class="btn red">Guardar juego</button>
+          <button type="button" class="btn close">Cancelar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Anotador Scorebook / iSCORE -->
+  <div class="modal" id="scoreModal">
+    <div class="modalbox">
+      <div id="scorebookArea"></div>
+    </div>
+  </div>
+
+  <!-- Modal: Aparición al Plato (PA) -->
+  <div class="modal" id="paModal">
+    <div class="modalbox small">
+      <h2 id="paModalTitle">Registrar aparición al plato</h2>
+      <form id="paForm">
+        <input type="hidden" name="gameId">
+        <input type="hidden" name="paId">
+        <div class="formgrid">
+          <div class="field">
+            <label>Entrada</label>
+            <input name="inning" type="number" min="1" value="1" required>
+          </div>
+          <div class="field">
+            <label>Mitad</label>
+            <select name="half">
+              <option value="away">Visitante (Alta)</option>
+              <option value="home">Local (Baja)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Bateador</label>
+            <select name="batter" id="paBatter" required></select>
+          </div>
+          <div class="field">
+            <label>Lanzador</label>
+            <select name="pitcher" id="paPitcher" required></select>
+          </div>
+          <div class="field">
+            <label>Resultado</label>
+            <select name="result" id="paResult" required></select>
+          </div>
+          <div class="field">
+            <label>Picheo decisivo</label>
+            <select name="pitchType" id="paPitchType">
+              <option value="">No registrar</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Outs de la jugada</label>
+            <input name="outs" id="paOuts" type="number" min="0" max="3" value="0">
+          </div>
+          <div class="field">
+            <label>RBI (Impulsadas)</label>
+            <input name="rbi" type="number" min="0" value="0">
+          </div>
+          <div class="field">
+            <label>Carreras anotadas</label>
+            <input name="runs" type="number" min="0" value="0">
+          </div>
+          <div class="field">
+            <label>Robos de base</label>
+            <input name="sb" type="number" min="0" value="0">
+          </div>
+          <div class="field">
+            <label>Base por golpe (HBP)</label>
+            <input name="hbp" type="number" min="0" max="1" value="0">
+          </div>
+          <div class="field">
+            <label>Earned Runs permitidas</label>
+            <input name="earnedRuns" type="number" min="0" value="0">
+          </div>
+        </div>
+        <div class="notice">
+          La aparición queda asociada simultáneamente al <b>bateador</b> y al <b>lanzador</b>. De aquí se generan los enfrentamientos cara a cara y las estadísticas oficiales.
+        </div>
+        <div class="formactions">
+          <button type="submit" class="btn red">Guardar aparición</button>
+          <button type="button" class="btn close">Cancelar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Cara a Cara (Bateador vs Pitcher) -->
+  <div class="modal" id="faceModal">
+    <div class="modalbox">
+      <h2>Cara a cara: bateador vs lanzador</h2>
+      <div class="facegrid">
+        <div class="field">
+          <label>Selecciona bateador — todos los jugadores</label>
+          <select id="faceBatter"></select>
+        </div>
+        <div class="field">
+          <label>Selecciona lanzador — todos los jugadores</label>
+          <select id="facePitcher"></select>
+        </div>
+      </div>
+      <div id="faceArea" style="margin-top:18px"></div>
+    </div>
+  </div>
+
+  <!-- Firebase SDK (Compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <!-- Firebase Configuration -->
+  <script src="js/firebase-config.js"></script>
+  <!-- Application Logic -->
+  <script src="js/app.js"></script>
+</body>
+</html>
