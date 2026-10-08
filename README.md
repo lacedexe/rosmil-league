@@ -1,42 +1,57 @@
-# ⚾ ROSMIL LEAGUE — Plataforma Oficial de Gestión & iSCORE de Béisbol
+# ⚾ ROSMIL LEAGUE 0.1 — Plataforma Oficial de Gestión & iSCORE de Béisbol
 
 <p align="center">
   <img src="assets/rosmil-logo.png" alt="ROSMIL Baseball League" width="220">
 </p>
 
 <p align="center">
-  <b>Sistema integral para la administración de torneos, temporadas, franquicias, rosters, anotación de partidos jugada a jugada (BAT LOG / iSCORE) y métricas sabermétricas avanzadas.</b>
+  <b>Sistema integral para la administración de torneos, temporadas, franquicias, rosters reales, perfiles estadísticos tipo Baseball-Reference, comparación entre equipos y anotación jugada a jugada (BAT LOG / iSCORE).</b>
 </p>
 
 ---
 
 ## 📌 Tabla de Contenidos
-1. [Descripción General](#-descripción-general)
-2. [Filosofía Central del Sistema](#-filosofía-central-del-sistema)
-3. [Estructura del Proyecto](#-estructura-del-proyecto)
-4. [Módulos y Funcionalidades](#-módulos-y-funcionalidades)
-   - [Inicio (Dashboard)](#1-inicio-dashboard)
-   - [Temporadas y Playoffs](#2-temporadas-y-playoffs)
-   - [Tabla de Posiciones (Standings)](#3-tabla-de-posiciones-standings)
-   - [Juegos y Calendario](#4-juegos-y-calendario)
-   - [Anotador Oficial (BAT LOG / iSCORE)](#5-anotador-oficial-bat-log--iscore)
-   - [Gestión de Equipos y Roster](#6-gestión-de-equipos-y-roster)
-   - [Ficha de Jugadores y Repertorio](#7-ficha-de-jugadores-y-repertorio)
-   - [Estadísticas Sabermétricas](#8-estadísticas-sabermétricas)
-   - [Cara a Cara (Bateador vs Lanzador)](#9-cara-a-cara-bateador-vs-lanzador)
-   - [Líderes de la Liga](#10-líderes-de-la-liga)
-   - [Administración y Datos Locales](#11-administración-y-datos-locales)
-5. [Fórmulas y Métricas Implementadas](#-fórmulas-y-métricas-implementadas)
-6. [Cómo Ejecutar el Proyecto](#-cómo-ejecutar-el-proyecto)
-7. [Próximas Mejoras (Roadmap)](#-próximas-mejoras-roadmap)
+1. [Novedades en ROSMIL LEAGUE 0.1](#-novedades-en-rosmil-league-01)
+2. [Identidad Visual Oficial](#-identidad-visual-oficial)
+3. [Filosofía Central del Sistema](#-filosofía-central-del-sistema)
+4. [Estructura del Proyecto](#-estructura-del-proyecto)
+5. [Módulos y Funcionalidades](#-módulos-y-funcionalidades)
+   - [Seguridad y Control de Acceso (Modo Administrador vs Espectador)](#1-seguridad-y-control-de-acceso)
+   - [Perfiles de Equipos y Roster Real](#2-perfiles-de-equipos-y-roster-real)
+   - [Comparador de Equipos y Mejor Rival](#3-comparador-de-equipos-y-mejor-rival)
+   - [Perfiles Estadísticos de Jugadores (Estilo Baseball-Reference)](#4-perfiles-estadísticos-de-jugadores)
+   - [Sistema de Doble Confirmación](#5-sistema-de-doble-confirmación)
+   - [Navegación Global Clickeable](#6-navegación-global-clickeable)
+   - [Temporadas y Playoffs](#7-temporadas-y-playoffs)
+   - [Tabla de Posiciones (Standings)](#8-tabla-de-posiciones-standings)
+   - [Juegos y Calendario](#9-juegos-y-calendario)
+   - [Anotador Oficial (BAT LOG / iSCORE)](#10-anotador-oficial-bat-log--iscore)
+   - [Líderes de la Liga y Sabermetría](#11-líderes-de-la-liga-y-sabermetría)
+6. [Fórmulas y Métricas Implementadas](#-fórmulas-y-métricas-implementadas)
+7. [Conexión en la Nube con Firebase](#-conexión-con-firebase-base-de-datos-en-la-nube)
+8. [Cómo Ejecutar el Proyecto](#-cómo-ejecutar-el-proyecto)
 
 ---
 
-## 📖 Descripción General
+## 🌟 Novedades en ROSMIL LEAGUE 0.1
 
-**ROSMIL LEAGUE** es una aplicación web interactiva desarrollada para ligas, torneos y academias de béisbol. Su diseño está inspirado en interfaces deportivas de primer nivel, con un tema oscuro moderno, detalles en rojo vibrante, tipografía nítida (*Inter*) y una arquitectura modular desacoplada en archivos limpios de **HTML5**, **CSS3** y **JavaScript (ES6+)**.
+La versión **0.1** incorpora una actualización estructural profunda:
+* **Rosters Reales por Equipo:** Cada jugador pertenece de forma estricta a un equipo asignado (`p.team === teamId`). Si es transferido, el cambio se actualiza inmediatamente en el equipo actual y se preserva el historial en `teamHistory` sin perder estadísticas pasadas.
+* **Sistema de Roles y Control de Acceso:** Modo **Espectador** (lectura general) y Modo **Administrador** protegido con PIN (por defecto `admin123`). Únicamente el Administrador puede crear, editar o eliminar temporadas, equipos, atletas o partidos. Las mutaciones son validadas en la interfaz y en el motor lógico.
+* **Perfiles Completos de Franquicia:** Cada equipo cuenta con su propia vista detallada que incluye récord automático (`G - P`, `PCT`, carreras anotadas, permitidas y diferencial), roster de atletas y listado de juegos.
+* **Comparador Head-to-Head:** Herramienta interactiva para enfrentar dos equipos, ver su balance histórico directo, tendencia reciente y detectar de forma automática al **"Mejor Rival"** (el equipo contra el cual tiene mejor porcentaje de victorias).
+* **Perfiles Estadísticos de Jugadores (Baseball-Reference Style):** Estadísticas desglosadas por temporada y acumuladas de carrera, selector interactivo `[ BATEO ] [ PITCHEO ]`, enlace directo a su equipo actual, historial de equipos y resumen de actuación en su último partido.
+* **Doble Confirmación Obligatoria:** Modal de dos pasos antes de ejecutar cualquier eliminación de temporadas, equipos, jugadores, juegos o jugadas.
+* **Navegación Fluida:** Todos los nombres de jugadores y equipos en cualquier vista (tablas, clasificaciones, resultados, BAT LOG) son clickeables y abren su perfil al instante.
 
-La plataforma permite gestionar todo el ciclo de vida de un campeonato: desde la fundación de equipos y registro de atletas con fotos y logos, hasta la programación del calendario, control de series de postemporada y la anotación turno por turno de cada partido.
+---
+
+## 🎨 Identidad Visual Oficial
+
+El diseño sigue una paleta cromática deportiva de alto contraste y legibilidad óptima:
+* **Verde Institucional / Verde Oscuro (`#06190f` / `#0d2818`):** Fondo principal y base de toda la aplicación.
+* **Amarillo Dorado (`#facc15`):** Encabezados importantes, títulos de sección, tarjetas principales, acentos destacados y badges.
+* **Blanco Nítido (`#ffffff`):** Tipografía principal, números estadísticos, tablas de métricas y datos de alto impacto.
 
 ---
 
@@ -44,105 +59,90 @@ La plataforma permite gestionar todo el ciclo de vida de un campeonato: desde la
 
 > **"El marcador define quién gana; el BAT LOG define la historia y las estadísticas."**
 
-A diferencia de sistemas genéricos donde el usuario ingresa números arbitrarios para cada jugador, en **ROSMIL LEAGUE**:
-1. **El marcador general** (`homeScore` vs `awayScore`) únicamente alimenta la tabla de posiciones (ganados, perdidos y porcentaje de victorias) y el estado de las series de postemporada.
-2. **Las estadísticas individuales y enfrentamientos directos** se derivan **exclusivamente** de las apariciones al plato registradas en el módulo **BAT LOG / iSCORE**.
-3. Si un partido termina 10 - 2 pero no se ha cargado el BAT LOG, los jugadores no acumulan hits, turnos ni carreras limpias hasta que se registre cada jugada. Esto garantiza la integridad y veracidad de cada número.
+1. **El marcador general** (`homeScore` vs `awayScore`) alimenta la tabla de posiciones, los récords de los equipos y las series de playoffs.
+2. **Las estadísticas individuales de jugadores** proceden de las apariciones al plato registradas en el módulo **BAT LOG / iSCORE**.
+3. **No se inventan datos:** Si no hay partidos registrados para un jugador o equipo, el sistema muestra honestamente `0` o `-` sin datos ficticios.
 
 ---
 
 ## 📁 Estructura del Proyecto
 
-El código está organizado de manera modular y limpia:
-
 ```text
 rosmilLeague/
 │
-├── index.html            # Estructura semántica, vistas y modales interactivos
-├── README.md             # Documentación exhaustiva en formato Markdown
+├── index.html            # Estructura semántica, vistas de perfil, modales de seguridad y PIN
+├── README.md             # Documentación completa de ROSMIL LEAGUE 0.1
 ├── README.txt            # Resumen en texto plano
 │
 ├── assets/
 │   └── rosmil-logo.png   # Logotipo oficial del programa
 │
 ├── css/
-│   └── style.css         # Hoja de estilos completa, variables CSS y diseño responsivo
+│   └── style.css         # Identidad visual (verde, amarillo, blanco), componentes y perfiles
 │
 └── js/
-    └── app.js            # Motor lógico, almacenamiento, cálculos sabermétricos y DOM
+    ├── firebase-config.js # Configuración y credenciales de Cloud Firestore
+    └── app.js             # Motor de cálculo sabermétrico, perfiles, seguridad y eventos
 ```
 
 ---
 
 ## 🚀 Módulos y Funcionalidades
 
-### 1. Inicio (Dashboard)
-- Resumen en tiempo real mediante tarjetas de métricas: número total de equipos, jugadores inscritos, temporadas y juegos registrados.
-- Banner institucional de bienvenida con el logotipo oficial de **ROSMIL LEAGUE**.
-- Vista rápida de las temporadas activas y de los partidos más recientes.
+### 1. Seguridad y Control de Acceso
+- **Botón de Modo en la Barra Superior:** Permite alternar entre `👁️ Modo Espectador` y `🛡️ Modo Administrador`.
+- **Autenticación con PIN:** Para pasar a modo Administrador se solicita un PIN de seguridad (por defecto `admin123`, personalizable en la configuración).
+- **Protección Visual y Lógica:**
+  - En modo Espectador se ocultan visualmente todos los botones de creación, edición y eliminación.
+  - Si se intenta invocar una función de guardado o borrado desde código o consola, el sistema rechaza la operación informando que solo el Administrador tiene permisos.
 
-### 2. Temporadas y Playoffs
-- **Modalidad Liga:** Definición de temporadas regulares especificando fechas de inicio, culminación y número total de juegos pactados.
-- **Modalidad Eliminatoria:** Creación de fases de playoffs y series al mejor de **3**, **5** o **7** encuentros.
-- **Seguimiento dinámico de series:** El sistema calcula automáticamente las victorias de cada equipo en la serie (`winsA` vs `winsB`) a partir de los resultados de los juegos asociados y declara al ganador cuando alcanza la mayoría necesaria.
+### 2. Perfiles de Equipos y Roster Real
+- Al hacer clic en cualquier equipo se abre su perfil con:
+  - Logo oficial, nombre y ciudad.
+  - **Récord Oficial:** Victorias, Derrotas, PCT, Carreras Anotadas (RS), Carreras Permitidas (RA) y Diferencial (+/-).
+  - **Roster Actual:** Lista de jugadores asignados con dorsal, posición, rol y enlace a sus perfiles.
+  - **Historial de Partidos:** Encuentros disputados por el equipo con resultados finales.
 
-### 3. Tabla de Posiciones (Standings)
-- Tabla oficial ordenada dinámicamente por porcentaje de victorias (`PCT = G / (G + P)`).
-- Registro de Juegos Ganados (G), Juegos Perdidos (P) y Porcentaje de Efectividad.
+### 3. Comparador de Equipos y Mejor Rival
+- Dentro del perfil de cada equipo se incluye un selector para elegir un rival y compararlos:
+  - **Récord General:** Comparativa de victorias, derrotas y efectividad de ambos.
+  - **Historial Directo (Versus):** Partidos disputados entre ellos, victorias de cada uno, carreras anotadas y carreras permitidas.
+  - **Mejor Rival Detectado:** Cálculo automático del equipo frente al cual tiene mejores resultados históricos (mínimo 1 juego disputado).
 
-### 4. Juegos y Calendario
-- Registro completo de enfrentamientos: selección de temporada, serie vinculada (si aplica), fecha, hora, estadio, número de juego y equipos (local y visitante).
-- Visualización de tarjetas de partido con marcadores, estatus del BAT LOG (pendiente o completo) y acceso inmediato a la hoja de anotación.
+### 4. Perfiles Estadísticos de Jugadores
+- Vista inspirada en Baseball-Reference:
+  - Foto, número de dorsal, posición habitual, lado de bateo y tiro.
+  - Enlace al **Equipo Actual** con navegación directa.
+  - **Historial de Equipos (`teamHistory`):** Tabla con las temporadas y los equipos en los que ha militado.
+  - **Selector [ BATEO ] [ PITCHEO ]:** Permite alternar entre métricas ofensivas y de lanzador en atletas de rol lanzador o Two-Way.
+  - **Líneas por Temporada y Totales de Carrera:** Tablas completas con todas las categorías ofensivas y de pitcheo calculadas a partir del BAT LOG.
+  - **Resumen del Último Partido:**
+    - Bateo: Turnos oficiales, hits (ej. `4-2`), HR, RBI, R, etc.
+    - Pitcheo: Entradas lanzadas, carreras limpias, ponches, boletos y efectividad del encuentro.
 
-### 5. Anotador Oficial (BAT LOG / iSCORE)
-El corazón estadístico del sistema:
-- **Registro de Apariciones al Plato (PA):**
-  - Entrada (*Inning*) y Mitad (Alta / Visitante vs. Baja / Local).
-  - Selección inteligente de bateador según el equipo al bate.
-  - Selección inteligente de lanzador según el equipo a la defensiva.
-  - Resultado de la jugada: Sencillo, Doble, Triple, Home Run, Base por bolas, Golpeado por lanzamiento, Ponche tirándole, Ponche cantado, Rodado, Elevado, Línea, Sacrificio de fly, Toque de sacrificio, Error o Fielder's Choice.
-  - Selección del picheo decisivo según el repertorio real del lanzador en turno.
-  - Outs generados (calculados automáticamente con posibilidad de ajuste manual).
-  - Carreras anotadas (R), Carreras impulsadas (RBI), Bases robadas (SB), Golpeados (HBP) y Carreras limpias permitidas (ER).
-- **Libro de jugadas:** Visualización cronológica del partido con opciones para editar o eliminar cada aparición.
-- **Resumen en vivo:** Tarjetas estadísticas de bateadores y lanzadores del partido en tiempo real.
+### 5. Sistema de Doble Confirmación
+- Toda acción de borrado requiere pasar por dos confirmaciones en modal:
+  1. **Paso 1:** Alerta inicial con opción de Cancelar o Continuar.
+  2. **Paso 2:** Advertencia de impacto permanente con botón explícito **"ELIMINAR DEFINITIVAMENTE"**.
 
-### 6. Gestión de Equipos y Roster
-- Creación y edición de franquicias deportivas: nombre, ciudad, manager y carga de logo personalizado en formato de imagen (almacenado en Base64).
-- Asignación interactiva del roster: vinculación de jugadores creados a cada equipo.
+### 6. Navegación Global Clickeable
+- Cualquier nombre de jugador o equipo que aparezca en el sistema (tablas, partidos, líderes, alineaciones) es interactivo (`.player-link` y `.team-link`) y abre su perfil correspondiente.
 
-### 7. Ficha de Jugadores y Repertorio
-- Perfiles de atletas completos:
-  - Nombre completo y número de dorsal.
-  - Rol deportivo: **Bateador**, **Lanzador** o **Two-Way** (lanzador y bateador).
-  - Posición defensiva habitual (P, C, 1B, 2B, 3B, SS, LF, CF, RF, DH).
-  - Lados de bateo y fildeo: Batea (Derecho / Izquierdo / Ambidiestro) y Tira (Derecho / Izquierdo).
-  - Datos biométricos: Edad, Altura y Peso.
-  - Foto del jugador con vista previa instantánea.
-  - **Catálogo de lanzamientos:** Para los pitchers, selección de su repertorio personal (Recta de 4 costuras, 2 costuras, Sinker, Cutter, Slider, Sweeper, Curva, Knuckle Curve, Cambio, Circle Change, Splitter, Forkball, Nudillera). Estos lanzamientos alimentan el selector del BAT LOG.
+### 7. Temporadas y Playoffs
+- Creación y edición de temporadas regulares y playoffs al mejor de 3, 5 o 7 juegos.
+- Soporte para eliminación de temporadas exclusivo para el administrador con doble confirmación.
 
-### 8. Estadísticas Sabermétricas
-- Tabla consolidada de métricas individuales calculadas en tiempo real.
-- Columnas detalladas tanto para ofensiva como para pitcheo.
-- Acceso directo a la herramienta comparativa Cara a Cara.
+### 8. Tabla de Posiciones (Standings)
+- Tabla oficial ordenada por porcentaje de victorias (`PCT = G / (G + P)`).
 
-### 9. Cara a Cara (Bateador vs Lanzador)
-- Selector cruzado entre cualquier bateador y lanzador de la liga.
-- Análisis de duelos directos:
-  - Total de apariciones entre ambos (`PA`).
-  - Turnos oficiales (`AB`), Hits conectados (`H`), Promedio de bateo en el duelo (`AVG`).
-  - Ponches propinados (`SO`), Cuadrangulares (`HR`), Boletos (`BB`) y Porcentaje de ponches (`K%`).
-  - Resumen visual de distribución de resultados.
-  - Historial detallado con fecha, partido, entrada, resultado y tipo de picheo.
+### 9. Juegos y Calendario
+- Programación de encuentros por temporada, estadio y fecha con acceso directo al anotador oficial.
 
-### 10. Líderes de la Liga
-- Ranking dinámico de los mejores bateadores por promedio de bateo (`AVG`), mostrando hits, jonrones, carreras impulsadas y ponches.
+### 10. Anotador Oficial (BAT LOG / iSCORE)
+- Registro turno por turno de apariciones al plato con outs, carreras, impulsadas, bases robadas y lanzamientos decisivos.
 
-### 11. Administración y Datos Locales
-- Panel centralizado con accesos rápidos para registrar equipos, jugadores, temporadas y partidos.
-- **Persistencia en LocalStorage:** Clave `rosmilLeagueDataV4`, sin necesidad de servidores externos ni configuraciones complejas de base de datos.
-- **Migración inteligente:** Si existen registros de versiones previas (`V2` o `V3`), la aplicación los migra automáticamente preservando franquicias y jugadores.
-- **Botón de Borrado Seguro:** Permite reiniciar la base de datos previa confirmación del usuario.
+### 11. Líderes de la Liga y Sabermetría
+- Ranking dinámico de mejores bateadores y lanzadores según sus métricas acumuladas.
 
 ---
 
@@ -156,85 +156,40 @@ El corazón estadístico del sistema:
 | **H** | Hits | `Sencillos + Dobles + Triples + Home Runs` |
 | **TB** | Total Bases | `(1B × 1) + (2B × 2) + (3B × 3) + (HR × 4)` |
 | **AVG** | Batting Average (Promedio) | `H / AB` (mostrado en formato `.000`) |
-| **OBP** | On-Base Percentage (Porcentaje de embasado) | `(H + BB + HBP) / (AB + BB + HBP + SF)` |
+| **OBP** | On-Base Percentage | `(H + BB + HBP) / (AB + BB + HBP + SF)` |
 | **SLG** | Slugging Percentage | `TB / AB` |
 | **OPS** | On-Base Plus Slugging | `OBP + SLG` |
-| **K%** | Strikeout Rate | `SO / PA` (expresado en porcentaje) |
+| **K%** | Strikeout Rate | `SO / PA` |
 
 ### Métricas de Pitcheo
 | Sigla | Nombre | Fórmula / Criterio |
 |---|---|---|
-| **BF** | Batters Faced (Bateadores enfrentados) | Total de apariciones contra el lanzador |
-| **IP** | Innings Pitched (Entradas lanzadas) | `(Outs ÷ 3) . (Outs % 3)` (ej. 5.1 = 5 entradas y 1 tercio) |
-| **ERA** | Earned Run Average (Efectividad) | `(ER × 27) / Outs` (calculado a base de 9 innings) |
-| **WHIP** | Walks and Hits per Inning Pitched | `((BB + H) × 9) / Outs` |
+| **BF** | Batters Faced | Total de bateadores enfrentados |
+| **IP** | Innings Pitched | `(Outs ÷ 3) . (Outs % 3)` (ej. 5.1 = 5 entradas y 1 tercio) |
+| **ERA** | Earned Run Average (Efectividad) | `(ER × 27) / Outs` (base a 9 innings) |
+| **WHIP** | Walks + Hits per Inning | `((BB + H) × 9) / Outs` |
 
 ---
 
 ## 🔥 Conexión con Firebase (Base de Datos en la Nube)
 
-El sistema cuenta con una arquitectura **híbrida (Offline-First + Cloud Realtime Sync)**:
-- **Sin configurar Firebase:** Funciona automáticamente con almacenamiento local en el navegador (`LocalStorage`).
-- **Con Firebase configurado:** Sincroniza todos los datos en tiempo real en la nube con **Cloud Firestore**, permitiendo que varios dispositivos (computadoras, tablets o celulares) anoten o consulten partidos simultáneamente.
-
-### Pasos para conectar tu proyecto de Firebase:
-
-1. **Crear la base de datos Firestore en Firebase:**
-   - Entra a tu proyecto en la [Consola de Firebase](https://console.firebase.google.com/).
-   - En el menú lateral izquierdo, haz clic en **Compilación (Build)** -> **Firestore Database**.
-   - Haz clic en **Crear base de datos**.
-   - Selecciona la ubicación de tu preferencia (ej. `nam5 (us-central)`).
-   - En **Reglas de seguridad**, selecciona **Comenzar en modo de prueba** (permite lectura y escritura inmediata mientras configuras tu liga) y presiona **Habilitar**.
-
-2. **Obtener las credenciales de tu aplicación Web:**
-   - En la página principal de tu proyecto en Firebase, haz clic en el ícono de engranaje ⚙️ (Configuración del proyecto) -> **General**.
-   - Desplázate hacia abajo hasta la sección **Tus apps** y haz clic en el ícono Web `</>`.
-   - Escribe un nombre para la app (ejemplo: `ROSMIL League Web`) y haz clic en **Registrar app**.
-   - Verás un bloque de código con un objeto llamado `firebaseConfig`.
-
-3. **Pegar las credenciales en el archivo de configuración:**
-   - Abre el archivo `js/firebase-config.js` en tu editor de código.
-   - Reemplaza los valores con las credenciales que te proporcionó Firebase:
-     ```javascript
-     const firebaseConfig = {
-       apiKey: "AIzaSy...",
-       authDomain: "tu-proyecto.firebaseapp.com",
-       projectId: "tu-proyecto",
-       storageBucket: "tu-proyecto.appspot.com",
-       messagingSenderId: "123456789...",
-       appId: "1:123456789:web:abcdef..."
-     };
-     ```
-   - Guarda el archivo.
-
-4. **¡Listo!**
-   - Abre o recarga `index.html`.
-   - En la barra superior verás el indicador cambiar a: **`🟢 En la nube (Firebase)`**.
-   - Todos los cambios, equipos, partidos y anotaciones del BAT LOG se sincronizarán en vivo en la nube.
+Arquitectura **híbrida (Offline-First + Cloud Realtime Sync)**:
+- **Almacenamiento Local:** Funciona sin internet vía `LocalStorage`.
+- **Sincronización en la Nube:** Conectado a **Cloud Firestore** para actualizar cambios en tiempo real entre múltiples dispositivos.
+- Configuración en el archivo `js/firebase-config.js`.
 
 ---
 
 ## 💻 Cómo Ejecutar el Proyecto
 
-No se requiere instalar Node.js, PHP ni ninguna base de datos externa. 
-
 1. Abre la carpeta del proyecto en tu equipo:
    ```text
    c:\Users\pinai\Documents\antigravity\rosmilLeague
    ```
-2. Haz doble clic en el archivo `index.html` para abrirlo en tu navegador favorito (Google Chrome, Microsoft Edge, Firefox, Brave o Safari).
-3. ¡Listo! Comienza creando tus equipos, añadiendo jugadores y registrando tus temporadas y partidos.
+2. Abre `index.html` en tu navegador web.
+3. Para acceder a las funciones administrativas, haz clic en **`👁️ Modo Espectador`** en la esquina superior e ingresa el PIN `admin123`.
 
 ---
 
-## 🗺️ Próximas Mejoras (Roadmap)
+*ROSMIL LEAGUE 0.1 — Diseñado para la excelencia del béisbol.*
 
-- [ ] **Hoja de anotación visual de diamantes:** Representación gráfica de corredores en base (1B, 2B, 3B) y conteo de bolas y strikes en vivo.
-- [ ] **Spray Chart (Mapa de batazos):** Coordenadas de dispersión de batazos hacia el cuadro y los jardines.
-- [ ] **Exportación / Importación:** Guardar copias de respaldo completas en archivos `.json` para compartir entre diferentes dispositivos.
-- [ ] **Box Score Imprimible:** Generación de hojas oficiales en formato PDF o vista de impresión para planilleros y prensa.
-- [ ] **Pitch Count & Rest Days:** Alertas automáticas de conteo de lanzamientos y días de descanso reglamentarios para lanzadores jóvenes.
-
----
-
-*Desarrollado para la excelencia del béisbol con **ROSMIL LEAGUE**.*

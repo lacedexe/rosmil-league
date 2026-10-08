@@ -44,7 +44,12 @@
           <span class="mobile">ROSMIL LEAGUE / </span>
           <span id="pageTitle">Inicio</span>
         </strong>
-        <span id="storageStatus">Datos locales</span>
+        <div class="top-meta">
+          <button id="adminRoleBtn" class="btn btn-role" title="Cambiar modo de acceso">
+            <span id="adminRoleIcon">👁️</span> <span id="adminRoleText">Modo Espectador</span>
+          </button>
+          <span id="storageStatus">Datos locales</span>
+        </div>
       </header>
 
       <div class="content">
@@ -101,7 +106,7 @@
           <div class="panel">
             <div class="head">
               <h2>Temporadas</h2>
-              <button class="btn red" data-modal="seasonModal">+ Crear temporada</button>
+              <button class="btn yellow admin-only" data-modal="seasonModal">+ Crear temporada</button>
             </div>
             <p class="muted">Aquí defines si la competencia es Liga o Eliminatoria. Los partidos y sus BAT LOG se registran después en Juegos.</p>
             <div id="seasonList"></div>
@@ -124,7 +129,7 @@
           <div class="panel">
             <div class="head">
               <h2>Juegos</h2>
-              <button class="btn red" data-modal="gameModal">+ Registrar juego</button>
+              <button class="btn yellow admin-only" data-modal="gameModal">+ Registrar juego</button>
             </div>
             <div class="notice info">
               Cada juego tiene dos partes: <b>resultado</b> y <b>BAT LOG / iSCORE</b>. El resultado sirve para la competencia; el BAT LOG es obligatorio para que las estadísticas individuales y los enfrentamientos bateador vs lanzador se actualicen.
@@ -138,7 +143,7 @@
           <div class="panel">
             <div class="head">
               <h2>Equipos</h2>
-              <button class="btn red" data-modal="teamModal">+ Crear equipo</button>
+              <button class="btn yellow admin-only" data-modal="teamModal">+ Crear equipo</button>
             </div>
             <div id="teamsList"></div>
           </div>
@@ -149,7 +154,7 @@
           <div class="panel">
             <div class="head">
               <h2>Jugadores</h2>
-              <button class="btn red" data-modal="playerModal">+ Crear jugador</button>
+              <button class="btn yellow admin-only" data-modal="playerModal">+ Crear jugador</button>
             </div>
             <div id="playersList"></div>
           </div>
@@ -184,23 +189,17 @@
 
         <!-- View: Administración -->
         <section id="admin" class="view">
-          <div class="grid2">
-            <div class="panel">
-              <h2>Administración</h2>
-              <p class="muted">Administra los datos de la liga y abre las pantallas principales.</p>
-              <div class="actions">
-                <button class="btn red" data-modal="teamModal">Crear equipo</button>
-                <button class="btn red" data-modal="playerModal">Crear jugador</button>
-                <button class="btn red" data-modal="seasonModal">Crear temporada</button>
-                <button class="btn" data-modal="gameModal">Registrar juego</button>
-              </div>
-            </div>
-            <div class="panel">
-              <h2>Datos</h2>
-              <p class="muted">Los datos y fotos se guardan localmente en el navegador.</p>
-              <button class="btn danger" id="clearData">Borrar todos los datos</button>
-            </div>
-          </div>
+          <div id="adminPanelArea"></div>
+        </section>
+
+        <!-- View: Perfil de Equipo -->
+        <section id="teamProfile" class="view">
+          <div id="teamProfileArea"></div>
+        </section>
+
+        <!-- View: Perfil de Jugador -->
+        <section id="playerProfile" class="view">
+          <div id="playerProfileArea"></div>
         </section>
       </div>
     </main>
@@ -565,6 +564,56 @@
         </div>
       </div>
       <div id="faceArea" style="margin-top:18px"></div>
+    </div>
+  </div>
+
+  <!-- Modal: Acceso de Administrador -->
+  <div class="modal" id="adminLoginModal">
+    <div class="modalbox small">
+      <h2>Acceso de Administrador</h2>
+      <p class="muted">Ingresa la clave de administrador para gestionar parámetros, equipos, jugadores y temporadas.</p>
+      <form id="adminLoginForm">
+        <div class="field">
+          <label>Clave de Administrador</label>
+          <input type="password" id="adminPinInput" placeholder="Introduce la clave" required autofocus>
+          <small class="muted" style="margin-top: 6px; display: block;">Clave por defecto: <b>admin123</b></small>
+        </div>
+        <div id="adminLoginError" class="notice danger-box" style="display:none; margin-top: 12px;">
+          Clave incorrecta. Por favor intenta de nuevo.
+        </div>
+        <div class="formactions">
+          <button type="submit" class="btn yellow">Iniciar Sesión</button>
+          <button type="button" class="btn close">Cancelar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Doble Confirmación de Eliminación -->
+  <div class="modal" id="confirmDeleteModal">
+    <div class="modalbox small confirm-box">
+      <!-- Paso 1 -->
+      <div id="confirmStep1">
+        <div class="confirm-icon">⚠️</div>
+        <h2 id="confirmTitle1" style="color: var(--yellow);">¿Eliminar elemento?</h2>
+        <p id="confirmMsg1" class="muted" style="font-size: 14px; margin: 15px 0;">¿Estás seguro de que deseas eliminar este registro?</p>
+        <div class="formactions" style="justify-content: center; gap: 12px; margin-top: 22px;">
+          <button type="button" class="btn close" id="confirmCancel1">Cancelar</button>
+          <button type="button" class="btn yellow" id="confirmProceed1">Continuar ➔</button>
+        </div>
+      </div>
+      <!-- Paso 2 -->
+      <div id="confirmStep2" style="display:none">
+        <div class="confirm-icon danger">🚨</div>
+        <h2 id="confirmTitle2" style="color: #ef4444;">Confirmación definitiva requerida</h2>
+        <div class="notice danger-box" id="confirmMsg2" style="font-size: 13px; line-height: 1.5; margin: 15px 0;">
+          Esta acción puede eliminar información relacionada con este elemento y no se puede deshacer fácilmente. ¿Confirmas que deseas eliminarlo definitivamente?
+        </div>
+        <div class="formactions" style="justify-content: center; gap: 12px; margin-top: 22px;">
+          <button type="button" class="btn close" id="confirmCancel2">Cancelar</button>
+          <button type="button" class="btn danger-strong" id="confirmFinalDelete">ELIMINAR DEFINITIVAMENTE</button>
+        </div>
+      </div>
     </div>
   </div>
 

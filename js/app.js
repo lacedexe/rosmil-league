@@ -1,7 +1,20 @@
 /**
- * ROSMIL LEAGUE — Interactive Baseball Platform Engine
- * Manages teams, rosters, seasons, series, games, and the core BAT LOG / iSCORE scoring system.
- * All individual stats are calculated dynamically from plate appearances (PA).
+ * ROSMIL LEAGUE — Interactive Baseball Platform Engine (Versión 0.1)
+ * Actualización integral:
+ * 1. Jugadores asignados exclusivamente por pertenencia real (p.team === teamId).
+ * 2. Control de permisos estricto (Únicamente Administrador puede modificar).
+ * 3. Perfil individual de equipo con Récord calculado (W-L, PCT, RS, RA, DIFF).
+ * 4. Selector para comparar equipos (Versus histórico, mejor rival, diferencial).
+ * 5. Creación y eliminación de temporadas (solo administrador).
+ * 6. Doble confirmación obligatoria para cualquier eliminación.
+ * 7. Perfil individual de cada jugador con estadísticas por temporada y carrera.
+ * 8. Estadísticas completas de bateo y pitcheo.
+ * 9. Selector interactivo [ BATEO ] [ PITCHEO ] para lanzadores.
+ * 10. Equipo actual clickeable en el perfil del jugador.
+ * 11. Historial de equipos conservando estadísticas históricas.
+ * 12. Rendimiento en el último partido del jugador (bateo o pitcheo).
+ * 13 & 14. Jugadores y equipos clickeables en toda la aplicación.
+ * 15 & 16. Diseño oficial: Fondo Verde, Secciones Amarillas, Estadísticas Blancas.
  */
 
 (function () {
@@ -17,8 +30,20 @@
     games: [],
     seasons: [],
     series: [],
-    events: []
+    events: [],
+    settings: {
+      adminPin: 'admin123',
+      leagueName: 'ROSMIL LEAGUE'
+    }
   };
+
+  // Estado de permisos y navegación interna
+  let isAdmin = sessionStorage.getItem('rosmil_is_admin') === 'true';
+  let activeTeamId = null;
+  let activePlayerId = null;
+  let activePlayerTab = 'batting'; // 'batting' | 'pitching'
+  let compareTeamId = null;
+  let pendingDeleteAction = null;
 
   // Load persisted state
   try {
@@ -30,13 +55,29 @@
     console.error('Error al cargar datos desde localStorage:', err);
   }
 
-  // Ensure state arrays exist
+  // Ensure state arrays & settings exist
   if (!Array.isArray(db.teams)) db.teams = [];
   if (!Array.isArray(db.players)) db.players = [];
   if (!Array.isArray(db.games)) db.games = [];
   if (!Array.isArray(db.seasons)) db.seasons = [];
   if (!Array.isArray(db.series)) db.series = [];
   if (!Array.isArray(db.events)) db.events = [];
+  if (!db.settings || typeof db.settings !== 'object') {
+    db.settings = { adminPin: 'admin123', leagueName: 'ROSMIL LEAGUE' };
+  }
+
+  // Sanitización de jugadores y juegos
+  db.players.forEach(p => {
+    if (!Array.isArray(p.teamHistory)) p.teamHistory = [];
+    if (p.team && p.teamHistory.length === 0) {
+      p.teamHistory.push({
+        teamId: p.team,
+        teamName: teamName(p.team),
+        date: 'Inicial',
+        seasonName: 'Actual'
+      });
+    }
+  });
 
   db.games.forEach(g => {
     if (!Array.isArray(g.batLog)) g.batLog = [];
@@ -66,16 +107,16 @@
   // Plate Appearance Outcome Map
   const RESULT_OPTIONS = [
     ['Single', 'Single (Sencillo)'],
-    ['Double', 'Doble'],
-    ['Triple', 'Triple'],
-    ['Home Run', 'Home Run'],
+    ['Double', 'Doble (2B)'],
+    ['Triple', 'Triple (3B)'],
+    ['Home Run', 'Home Run (HR)'],
     ['Walk', 'Base por bolas (BB)'],
     ['HBP', 'Golpeado por lanzamiento (HBP)'],
     ['Strikeout Swinging', 'Ponche tirándole (SO)'],
     ['Strikeout Looking', 'Ponche cantado (SO)'],
-    ['Groundout', 'Rodado / out'],
-    ['Flyout', 'Elevado / out'],
-    ['Lineout', 'Línea / out'],
+    ['Groundout', 'Rodado / out (GO)'],
+    ['Flyout', 'Elevado / out (FO)'],
+    ['Lineout', 'Línea / out (LO)'],
     ['Sac Fly', 'Sacrificio de fly (SF)'],
     ['Sac Bunt', 'Toque de sacrificio (SH)'],
     ['Reached Error', 'Llegó por error (E)'],
@@ -116,14 +157,54 @@
     'Fielder Choice': 1
   };
 
-  // Storage Status Indicator
+  // ----------------------------------------------------
+  // SISTEMA DE PERMISOS: ADMINISTRADOR
+  // ----------------------------------------------------
+  function checkAdmin(notify = true) {
+    if (!isAdmin) {
+      if (notify) {
+        alert('Acceso denegado: Únicamente el Administrador de la liga tiene permisos para realizar modificaciones.');
+      }
+      return false;
+    }
+    return true;
+  }
+
+  function updateRoleUI() {
+    document.body.classList.toggle('viewer-mode', !isAdmin);
+
+    const btn = $('#adminRoleBtn');
+    const icon = $('#adminRoleIcon');
+    const text = $('#adminRoleText');
+
+    if (btn && icon && text) {
+      if (isAdmin) {
+        btn.classList.add('is-admin');
+        icon.textContent = '👑';
+        text.textContent = 'Modo Administrador';
+      } else {
+        btn.classList.remove('is-admin');
+        icon.textContent = '👁️';
+        text.textContent = 'Modo Espectador';
+      }
+    }
+  }
+
+  // ----------------------------------------------------
+  // SISTEMA DE PERSISTENCIA Y SINCRONIZACIÓN
+  // ----------------------------------------------------
   function updateStorageStatus(msg) {
     const el = $('#storageStatus');
     if (el) el.textContent = msg;
   }
 
-  // State Persistence & Re-render
   function save() {
+    // Validación estricta en el motor: No permitir guardar si no es administrador
+    if (!isAdmin) {
+      console.warn('Operación rechazada: Solo el administrador puede modificar datos.');
+      return;
+    }
+
     try {
       localStorage.setItem(KEY, JSON.stringify(db));
     } catch (e) {
@@ -132,7 +213,7 @@
     }
     renderAll();
 
-    // Firebase Cloud Sync
+    // Sincronización en la nube (Firebase Firestore)
     if (typeof firebaseInitialized !== 'undefined' && firebaseInitialized && firestoreDb) {
       updateStorageStatus('🔄 Guardando en Firebase...');
       firestoreDb
@@ -151,7 +232,28 @@
     }
   }
 
-  // Utilities
+  // ----------------------------------------------------
+  // DOBLE CONFIRMACIÓN DE ELIMINACIÓN (REGLA N° 6)
+  // ----------------------------------------------------
+  function requestDoubleDelete(title, warningDetails, onConfirmed) {
+    if (!checkAdmin()) return;
+
+    pendingDeleteAction = onConfirmed;
+    $('#confirmTitle1').textContent = `¿Eliminar "${title}"?`;
+    $('#confirmMsg1').textContent = warningDetails || '¿Estás seguro de que deseas eliminar este registro?';
+    $('#confirmTitle2').textContent = `Confirmar eliminación: "${title}"`;
+    $('#confirmMsg2').innerHTML = `⚠️ <b>ADVERTENCIA CRÍTICA:</b> Esta acción eliminará permanentemente la información relacionada con <b>"${esc(
+      title
+    )}"</b> y no se puede deshacer fácilmente.<br><br>¿Confirmas que deseas proceder con la eliminación definitiva?`;
+
+    $('#confirmStep1').style.display = 'block';
+    $('#confirmStep2').style.display = 'none';
+    $('#confirmDeleteModal').classList.add('open');
+  }
+
+  // ----------------------------------------------------
+  // UTILIDADES
+  // ----------------------------------------------------
   function esc(v) {
     return String(v ?? '').replace(/[&<>"']/g, m => ({
       '&': '&amp;',
@@ -212,7 +314,9 @@
     );
   }
 
-  // Baseball Metric Computations
+  // ----------------------------------------------------
+  // CÁLCULO DE ESTADÍSTICAS SABERMÉTRICAS (OFENSIVA Y PITCHEO)
+  // ----------------------------------------------------
   function batterStats(pid, sourcePAs) {
     const rows = sourcePAs.filter(x => x.batter === pid);
     const s = {
@@ -220,14 +324,17 @@
       AB: 0,
       R: 0,
       H: 0,
-      TB: 0,
+      D: 0,
+      T: 0,
       HR: 0,
+      TB: 0,
       RBI: 0,
       BB: 0,
       HBP: 0,
       SO: 0,
       SB: 0,
-      SF: 0
+      SF: 0,
+      SH: 0
     };
 
     rows.forEach(pa => {
@@ -235,13 +342,16 @@
       if (AB_RESULTS.has(r)) s.AB++;
       if (HIT_RESULTS.has(r)) {
         s.H++;
-        s.TB += r === 'Single' ? 1 : r === 'Double' ? 2 : r === 'Triple' ? 3 : 4;
-        if (r === 'Home Run') s.HR++;
+        if (r === 'Single') s.TB += 1;
+        if (r === 'Double') { s.D++; s.TB += 2; }
+        if (r === 'Triple') { s.T++; s.TB += 3; }
+        if (r === 'Home Run') { s.HR++; s.TB += 4; }
       }
       if (r === 'Walk') s.BB++;
       if (r === 'HBP') s.HBP++;
       if (r === 'Strikeout Swinging' || r === 'Strikeout Looking') s.SO++;
       if (r === 'Sac Fly') s.SF++;
+      if (r === 'Sac Bunt') s.SH++;
       s.R += Number(pa.runs) || 0;
       s.RBI += Number(pa.rbi) || 0;
       s.SB += Number(pa.sb) || 0;
@@ -262,7 +372,9 @@
     const s = {
       BF: rows.length,
       IP: '0.0',
+      outs: 0,
       H: 0,
+      R: 0,
       ER: 0,
       BB: 0,
       HBP: 0,
@@ -272,7 +384,8 @@
 
     rows.forEach(pa => {
       const r = pa.result;
-      outs += Number(pa.outs) || 0;
+      const o = Number(pa.outs) || 0;
+      outs += o;
       if (HIT_RESULTS.has(r)) {
         s.H++;
         if (r === 'Home Run') s.HR++;
@@ -280,9 +393,11 @@
       if (r === 'Walk') s.BB++;
       if (r === 'HBP') s.HBP++;
       if (r === 'Strikeout Swinging' || r === 'Strikeout Looking') s.SO++;
+      s.R += Number(pa.runs) || 0;
       s.ER += Number(pa.earnedRuns) || 0;
     });
 
+    s.outs = outs;
     s.IP = Math.floor(outs / 3) + '.' + (outs % 3);
     s.ERA = outs ? (s.ER * 27) / outs : 0;
     s.WHIP = outs ? ((s.BB + s.H) * 9) / outs : 0;
@@ -297,7 +412,163 @@
     });
   }
 
-  // Navigation
+  // ----------------------------------------------------
+  // GESTIÓN DE ROSTER REAL (REGLA N° 1)
+  // ----------------------------------------------------
+  function teamPlayers(teamId, onlyBatter = false, onlyPitcher = false) {
+    // REGLA N° 1: Únicamente los jugadores que actualmente pertenecen al equipo
+    return db.players.filter(
+      p => p.team === teamId && (!onlyBatter || isBatter(p)) && (!onlyPitcher || isPitcher(p))
+    );
+  }
+
+  // ----------------------------------------------------
+  // RÉCORD Y ESTADÍSTICAS DE EQUIPO (REGLAS N° 3 Y N° 4)
+  // ----------------------------------------------------
+  function calculateTeamRecord(tid) {
+    const games = db.games.filter(g => g.home === tid || g.away === tid);
+    let w = 0,
+      l = 0,
+      t = 0,
+      rs = 0,
+      ra = 0;
+
+    games.forEach(g => {
+      const isHome = g.home === tid;
+      const own = Number(isHome ? g.homeScore : g.awayScore) || 0;
+      const opp = Number(isHome ? g.awayScore : g.homeScore) || 0;
+      rs += own;
+      ra += opp;
+      if (own > opp) w++;
+      else if (own < opp) l++;
+      else t++;
+    });
+
+    const gp = games.length;
+    const pct = w + l ? w / (w + l) : 0;
+    const diff = rs - ra;
+    return { gp, w, l, t, pct, rs, ra, diff, games };
+  }
+
+  function calculateHeadToHead(teamA, teamB) {
+    const games = db.games.filter(
+      g =>
+        (g.home === teamA && g.away === teamB) ||
+        (g.home === teamB && g.away === teamA)
+    );
+
+    let winsA = 0,
+      winsB = 0,
+      rsA = 0,
+      rsB = 0;
+
+    games.forEach(g => {
+      const aScore = Number(g.home === teamA ? g.homeScore : g.awayScore) || 0;
+      const bScore = Number(g.home === teamB ? g.homeScore : g.awayScore) || 0;
+      rsA += aScore;
+      rsB += bScore;
+      if (aScore > bScore) winsA++;
+      else if (bScore > aScore) winsB++;
+    });
+
+    const lastGame = games.length ? games[games.length - 1] : null;
+
+    return {
+      gp: games.length,
+      winsA,
+      winsB,
+      rsA,
+      rsB,
+      diffA: rsA - rsB,
+      games,
+      lastGame
+    };
+  }
+
+  function calculateBestRival(teamId) {
+    const games = db.games.filter(g => g.home === teamId || g.away === teamId);
+    if (!games.length) return null;
+
+    const opponents = {};
+    games.forEach(g => {
+      const oppId = g.home === teamId ? g.away : g.home;
+      if (!opponents[oppId]) opponents[oppId] = { w: 0, l: 0, gp: 0 };
+      const own = Number(g.home === teamId ? g.homeScore : g.awayScore) || 0;
+      const opp = Number(g.home === teamId ? g.awayScore : g.homeScore) || 0;
+      opponents[oppId].gp++;
+      if (own > opp) opponents[oppId].w++;
+      else if (own < opp) opponents[oppId].l++;
+    });
+
+    let bestOpp = null;
+    let bestPct = -1;
+
+    Object.entries(opponents).forEach(([oppId, stats]) => {
+      const pct = stats.gp ? stats.w / stats.gp : 0;
+      if (pct > bestPct || (pct === bestPct && stats.w > (bestOpp?.stats.w || 0))) {
+        bestPct = pct;
+        bestOpp = { oppId, name: teamName(oppId), stats, pct };
+      }
+    });
+
+    return bestOpp;
+  }
+
+  // ----------------------------------------------------
+  // ÚLTIMO PARTIDO DEL JUGADOR (REGLA N° 12)
+  // ----------------------------------------------------
+  function getPlayerLastGame(pid) {
+    // Busca juegos donde el jugador tuvo acción en el BAT LOG
+    const gamesWithPA = db.games.filter(g =>
+      (g.batLog || []).some(pa => pa.batter === pid || pa.pitcher === pid)
+    );
+
+    if (!gamesWithPA.length) return null;
+
+    // Tomar el más reciente
+    const lastGame = gamesWithPA[gamesWithPA.length - 1];
+    const pasAsBatter = (lastGame.batLog || []).filter(pa => pa.batter === pid);
+    const pasAsPitcher = (lastGame.batLog || []).filter(pa => pa.pitcher === pid);
+
+    let batSummary = null;
+    if (pasAsBatter.length) {
+      const s = batterStats(pid, pasAsBatter);
+      let details = [];
+      if (s.HR > 0) details.push(`${s.HR} HR`);
+      if (s.D > 0) details.push(`${s.D} 2B`);
+      if (s.T > 0) details.push(`${s.T} 3B`);
+      if (s.RBI > 0) details.push(`${s.RBI} RBI`);
+      if (s.R > 0) details.push(`${s.R} R`);
+      if (s.BB > 0) details.push(`${s.BB} BB`);
+      if (s.SB > 0) details.push(`${s.SB} SB`);
+
+      batSummary = {
+        line: `${s.AB}-${s.H}`,
+        extra: details.join(', '),
+        stats: s
+      };
+    }
+
+    let pitchSummary = null;
+    if (pasAsPitcher.length) {
+      const ps = pitcherStats(pid, pasAsPitcher);
+      pitchSummary = {
+        line: `${ps.IP} IP, ${ps.H} H, ${ps.ER} ER, ${ps.SO} SO, ${ps.BB} BB`,
+        era: ps.ERA.toFixed(2),
+        stats: ps
+      };
+    }
+
+    return {
+      game: lastGame,
+      batSummary,
+      pitchSummary
+    };
+  }
+
+  // ----------------------------------------------------
+  // NAVEGACIÓN Y APERTURA DE PERFILES (REGLAS 13 Y 14)
+  // ----------------------------------------------------
   function show(view) {
     $$('.view').forEach(x => x.classList.remove('active'));
     const v = $('#' + view);
@@ -310,7 +581,7 @@
 
     const names = {
       home: 'Inicio',
-      season: 'Temporada',
+      season: 'Temporadas',
       standings: 'Posiciones',
       games: 'Juegos',
       teams: 'Equipos',
@@ -318,13 +589,1745 @@
       stats: 'Estadísticas',
       leaders: 'Líderes',
       history: 'Historial',
-      admin: 'Administración'
+      admin: 'Administración',
+      teamProfile: 'Perfil de Equipo',
+      playerProfile: 'Perfil de Jugador'
     };
     $('#pageTitle').textContent = names[view] || view;
     renderAll();
   }
 
-  // Modal Handling
+  function openTeamProfile(tid) {
+    if (!tid) return;
+    activeTeamId = tid;
+    compareTeamId = db.teams.find(t => t.id !== tid)?.id || null;
+    renderTeamProfile();
+    show('teamProfile');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function openPlayerProfile(pid) {
+    if (!pid) return;
+    activePlayerId = pid;
+    activePlayerTab = 'batting';
+    renderPlayerProfile();
+    show('playerProfile');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // ----------------------------------------------------
+  // RENDER: PERFIL DE EQUIPO (REGLAS 1, 3, 4)
+  // ----------------------------------------------------
+  function renderTeamProfile() {
+    const el = $('#teamProfileArea');
+    const t = db.teams.find(x => x.id === activeTeamId);
+    if (!t) {
+      el.innerHTML = empty('Equipo no encontrado', 'Selecciona un equipo de la lista.');
+      return;
+    }
+
+    const rec = calculateTeamRecord(t.id);
+    const roster = teamPlayers(t.id);
+    const bestRiv = calculateBestRival(t.id);
+
+    // Comparación con otro equipo
+    const otherTeams = db.teams.filter(x => x.id !== t.id);
+    if (!compareTeamId && otherTeams.length) {
+      compareTeamId = otherTeams[0].id;
+    }
+    const h2h = compareTeamId ? calculateHeadToHead(t.id, compareTeamId) : null;
+    const oppTeam = compareTeamId ? db.teams.find(x => x.id === compareTeamId) : null;
+    const oppRec = compareTeamId ? calculateTeamRecord(compareTeamId) : null;
+
+    // Opciones del selector de comparación
+    const compOptions = otherTeams
+      .map(
+        ot =>
+          `<option value="${ot.id}" ${ot.id === compareTeamId ? 'selected' : ''}>${esc(
+            ot.name
+          )}</option>`
+      )
+      .join('');
+
+    el.innerHTML = `
+      <div style="margin-bottom:15px">
+        <button class="btn" data-go="teams">← Volver a lista de equipos</button>
+      </div>
+
+      <div class="profile-banner">
+        <div class="profile-identity">
+          ${
+            t.logo
+              ? `<img class="profile-teamlogo" src="${t.logo}" alt="${esc(t.name)}">`
+              : `<div class="profile-teamlogo" style="display:flex;align-items:center;justify-content:center;font-size:32px">⚾</div>`
+          }
+          <div>
+            <div class="eyebrow">${esc(t.city || 'Liga Oficial')}</div>
+            <h1 class="profile-title">${esc(t.name)}</h1>
+            <div class="profile-meta">
+              <span><b>Manager:</b> ${esc(t.manager || 'No asignado')}</span>
+              <span>•</span>
+              <span><b>Jugadores activos:</b> ${roster.length}</span>
+              <span>•</span>
+              <span><b>Juegos disputados:</b> ${rec.gp}</span>
+            </div>
+          </div>
+        </div>
+        <div class="profile-record-badge">
+          <small>RÉCORD OFICIAL</small>
+          <b>${rec.w} - ${rec.l}</b>
+          <span style="color:var(--yellow);font-weight:700;font-size:13px">${rec.pct
+            .toFixed(3)
+            .replace('0.', '.')} PCT</span>
+        </div>
+      </div>
+
+      <!-- Métricas generales -->
+      <div class="statgrid" style="margin-bottom:20px">
+        <div class="statbox"><small>Victorias</small><b>${rec.w}</b></div>
+        <div class="statbox"><small>Derrotas</small><b>${rec.l}</b></div>
+        <div class="statbox"><small>Carreras Anotadas</small><b>${rec.rs}</b></div>
+        <div class="statbox"><small>Carreras Permitidas</small><b>${rec.ra}</b></div>
+        <div class="statbox"><small>Diferencial</small><b style="color:${
+          rec.diff >= 0 ? 'var(--yellow)' : 'var(--red)'
+        }">${rec.diff >= 0 ? '+' + rec.diff : rec.diff}</b></div>
+        <div class="statbox"><small>Partidos</small><b>${rec.gp}</b></div>
+      </div>
+
+      <div class="grid2">
+        <!-- Roster Actual (Regla N° 1) -->
+        <div class="panel">
+          <div class="head">
+            <h2>Roster Oficial Actual (${roster.length})</h2>
+            <span class="muted">Solo jugadores asignados a este equipo</span>
+          </div>
+          ${
+            roster.length
+              ? `
+            <div class="tablewrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Jugador</th>
+                    <th>Pos</th>
+                    <th>Rol</th>
+                    <th>AVG</th>
+                    <th>HR</th>
+                    <th>RBI</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${roster
+                    .map(
+                      p => `
+                    <tr>
+                      <td><b>#${esc(p.number || '—')}</b></td>
+                      <td>
+                        ${p.photo ? `<img class="avatar" src="${p.photo}" alt="">` : ''}
+                        <span class="player-link" data-player-id="${p.id}">${esc(p.name)}</span>
+                      </td>
+                      <td>${esc(p.position || '—')}</td>
+                      <td>${p.role === 'two-way' ? 'Two-Way' : isPitcher(p) ? 'Pitcher' : 'Bateador'}</td>
+                      <td><b>${fmtAvg(p.bat?.AVG)}</b></td>
+                      <td>${p.bat?.HR || 0}</td>
+                      <td>${p.bat?.RBI || 0}</td>
+                    </tr>`
+                    )
+                    .join('')}
+                </tbody>
+              </table>
+            </div>`
+              : empty('Sin jugadores asignados', 'Asigna jugadores desde la pantalla de creación/edición.')
+          }
+        </div>
+
+        <!-- Historial de Partidos de este Equipo -->
+        <div class="panel">
+          <div class="head">
+            <h2>Historial de Partidos (${rec.games.length})</h2>
+            <span class="muted">Resultados del equipo</span>
+          </div>
+          ${
+            rec.games.length
+              ? `
+            <div class="tablewrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Rival</th>
+                    <th>Marcador</th>
+                    <th>Condición</th>
+                    <th>Resultado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rec.games
+                    .slice()
+                    .reverse()
+                    .map(g => {
+                      const isHome = g.home === t.id;
+                      const oppId = isHome ? g.away : g.home;
+                      const own = Number(isHome ? g.homeScore : g.awayScore) || 0;
+                      const opp = Number(isHome ? g.awayScore : g.homeScore) || 0;
+                      const win = own > opp;
+                      const tie = own === opp;
+                      return `
+                      <tr>
+                        <td>${esc(g.date)}</td>
+                        <td><span class="team-link" data-team-id="${oppId}">${esc(teamName(oppId))}</span></td>
+                        <td><b>${own} — ${opp}</b></td>
+                        <td>${isHome ? 'Local' : 'Visitante'}</td>
+                        <td>
+                          <span class="tag" style="background:${
+                            win ? 'rgba(34,197,94,0.2)' : tie ? 'rgba(250,204,21,0.2)' : 'rgba(239,68,68,0.2)'
+                          };color:${win ? '#4ade80' : tie ? 'var(--yellow)' : '#f87171'}">
+                            ${win ? 'VICTORIA' : tie ? 'EMPATE' : 'DERROTA'}
+                          </span>
+                        </td>
+                      </tr>`;
+                    })
+                    .join('')}
+                </tbody>
+              </table>
+            </div>`
+              : empty('Sin partidos registrados', 'Los juegos jugados por este equipo aparecerán aquí.')
+          }
+        </div>
+      </div>
+
+      <!-- SECTOR DE COMPARACIÓN ENTRE EQUIPOS (REGLA N° 4) -->
+      <div class="panel" style="margin-top:20px">
+        <div class="head">
+          <div>
+            <h2>Comparación con otro equipo</h2>
+            <span class="muted">Análisis estadístico directo y cara a cara</span>
+          </div>
+          <div class="compare-selector-wrap">
+            <label style="color:var(--muted);font-size:12px;font-weight:600">Seleccionar Rival:</label>
+            <select id="teamCompareSelect" style="min-width:220px;background:#05190f;border:1px solid var(--yellow);color:#fff;padding:8px 12px;border-radius:7px">
+              ${compOptions || '<option value="">No hay otros equipos</option>'}
+            </select>
+          </div>
+        </div>
+
+        ${
+          oppTeam && h2h
+            ? `
+          <div class="grid2" style="margin-top:16px">
+            <div class="card" style="text-align:center">
+              <h3 style="color:var(--yellow);margin-top:0">${esc(t.name)}</h3>
+              <div style="font-size:24px;font-weight:900;color:#fff">${rec.w} - ${rec.l}</div>
+              <small class="muted">Récord General (${rec.pct.toFixed(3).replace('0.', '.')})</small>
+              <div style="margin-top:12px;font-size:13px;color:#fff">
+                Carreras: <b>${rec.rs}</b> | Permitidas: <b>${rec.ra}</b> (Diff: <b>${
+                rec.diff >= 0 ? '+' + rec.diff : rec.diff
+              }</b>)
+              </div>
+            </div>
+
+            <div class="card" style="text-align:center">
+              <h3 style="color:var(--yellow);margin-top:0">${esc(oppTeam.name)}</h3>
+              <div style="font-size:24px;font-weight:900;color:#fff">${oppRec.w} - ${oppRec.l}</div>
+              <small class="muted">Récord General (${oppRec.pct.toFixed(3).replace('0.', '.')})</small>
+              <div style="margin-top:12px;font-size:13px;color:#fff">
+                Carreras: <b>${oppRec.rs}</b> | Permitidas: <b>${oppRec.ra}</b> (Diff: <b>${
+                oppRec.diff >= 0 ? '+' + oppRec.diff : oppRec.diff
+              }</b>)
+              </div>
+            </div>
+          </div>
+
+          <!-- Versus Histórico -->
+          <div class="card" style="margin-top:14px;background:#082416;border-color:var(--yellow)">
+            <div class="head">
+              <div>
+                <b style="font-size:16px;color:var(--yellow)">Versus Histórico: ${esc(t.name)} vs ${esc(
+                oppTeam.name
+              )}</b>
+                <div class="muted">Partidos disputados entre ambos: <b>${h2h.gp}</b></div>
+              </div>
+              <div class="profile-record-badge" style="padding:8px 16px;min-width:auto">
+                <small>SERIE HISTÓRICA</small>
+                <b>${h2h.winsA} - ${h2h.winsB}</b>
+              </div>
+            </div>
+
+            <div class="statgrid" style="margin-top:14px">
+              <div class="statbox"><small>Victorias ${esc(t.name)}</small><b>${h2h.winsA}</b></div>
+              <div class="statbox"><small>Victorias ${esc(oppTeam.name)}</small><b>${h2h.winsB}</b></div>
+              <div class="statbox"><small>Carreras ${esc(t.name)}</small><b>${h2h.rsA}</b></div>
+              <div class="statbox"><small>Carreras ${esc(oppTeam.name)}</small><b>${h2h.rsB}</b></div>
+              <div class="statbox"><small>Diferencial en Serie</small><b style="color:${
+                h2h.diffA >= 0 ? 'var(--yellow)' : 'var(--red)'
+              }">${h2h.diffA >= 0 ? '+' + h2h.diffA : h2h.diffA}</b></div>
+              <div class="statbox"><small>Partidos</small><b>${h2h.gp}</b></div>
+            </div>
+
+            ${
+              h2h.lastGame
+                ? `
+              <div class="last-game-card" style="margin-top:14px">
+                <h4>Último enfrentamiento directo:</h4>
+                <div class="last-game-line">
+                  ${esc(teamName(h2h.lastGame.away))} ${h2h.lastGame.awayScore} — ${h2h.lastGame.homeScore} ${esc(
+                    teamName(h2h.lastGame.home)
+                  )}
+                </div>
+                <div class="muted" style="margin-top:4px;font-size:12px">
+                  ${esc(h2h.lastGame.date)} • ${esc(h2h.lastGame.stadium || 'Estadio Principal')}
+                </div>
+              </div>`
+                : ''
+            }
+          </div>`
+            : empty('Selecciona un equipo para comparar', 'No hay suficientes enfrentamientos.')
+        }
+
+        <!-- Mejor rival del equipo -->
+        ${
+          bestRiv
+            ? `
+          <div class="best-rival-card">
+            <strong>🌟 Rival contra el que mejor le juega históricamente:</strong>
+            <span>
+              <b>${esc(bestRiv.name)}</b> — Récord de <b>${bestRiv.stats.w} - ${bestRiv.stats.l}</b> (${(
+                bestRiv.pct * 100
+              ).toFixed(1)}% de efectividad en ${bestRiv.stats.gp} juegos).
+            </span>
+          </div>`
+            : ''
+        }
+      </div>
+    `;
+
+    // Event listener del selector de rival
+    const sel = $('#teamCompareSelect');
+    if (sel) {
+      sel.onchange = () => {
+        compareTeamId = sel.value;
+        renderTeamProfile();
+      };
+    }
+  }
+
+  // ----------------------------------------------------
+  // RENDER: PERFIL DE JUGADOR (REGLAS 7, 8, 9, 10, 11, 12)
+  // ----------------------------------------------------
+  function renderPlayerProfile() {
+    const el = $('#playerProfileArea');
+    const p = db.players.find(x => x.id === activePlayerId);
+    if (!p) {
+      el.innerHTML = empty('Jugador no encontrado', 'Selecciona un jugador de la lista.');
+      return;
+    }
+
+    const lastGame = getPlayerLastGame(p.id);
+    const pas = allPAs();
+    const pPas = pas.filter(x => x.batter === p.id || x.pitcher === p.id);
+
+    // Agrupación de estadísticas por temporada
+    const seasonsMap = {};
+    pPas.forEach(pa => {
+      const sId = pa.game?.season || 'sin_temporada';
+      if (!seasonsMap[sId]) seasonsMap[sId] = [];
+      seasonsMap[sId].push(pa);
+    });
+
+    const hasPitching = isPitcher(p);
+
+    el.innerHTML = `
+      <div style="margin-bottom:15px">
+        <button class="btn" data-go="players">← Volver a lista de jugadores</button>
+      </div>
+
+      <div class="profile-banner">
+        <div class="profile-identity">
+          ${
+            p.photo
+              ? `<img class="profile-avatar" src="${p.photo}" alt="${esc(p.name)}">`
+              : `<div class="profile-avatar" style="display:flex;align-items:center;justify-content:center;font-size:32px">👤</div>`
+          }
+          <div>
+            <div class="eyebrow">${p.role === 'two-way' ? 'LANZADOR Y BATEADOR' : isPitcher(p) ? 'LANZADOR' : 'BATEADOR'}</div>
+            <h1 class="profile-title">${esc(p.name)} <span style="color:var(--yellow)">#${esc(p.number || '—')}</span></h1>
+            <div class="profile-meta">
+              <span><b>Posición:</b> ${esc(p.position || '—')}</span>
+              <span>•</span>
+              <span><b>B/T:</b> ${esc(p.bats || 'D')}/${esc(p.throws || 'D')}</span>
+              <span>•</span>
+              <span><b>Edad:</b> ${esc(p.age || '—')}</span>
+              <span>•</span>
+              <span><b>Estatura/Peso:</b> ${esc(p.height || '—')} / ${esc(p.weight || '—')}</span>
+            </div>
+            <!-- REGLA N° 10: Equipo actual clickeable -->
+            <div style="margin-top:10px;font-size:14px">
+              <b>Equipo Actual:</b>
+              ${
+                p.team
+                  ? `<span class="team-link" data-team-id="${p.team}" style="font-size:15px">${esc(teamName(p.team))}</span>`
+                  : `<span class="muted">Sin equipo asignado</span>`
+              }
+            </div>
+          </div>
+        </div>
+        <div class="profile-record-badge">
+          <small>PROMEDIO DE BATEO</small>
+          <b>${fmtAvg(p.bat?.AVG)}</b>
+          <span style="color:var(--yellow);font-weight:700;font-size:13px">${p.bat?.H || 0} H • ${p.bat?.HR || 0} HR</span>
+        </div>
+      </div>
+
+      <!-- REGLA N° 12: Último Partido del Jugador -->
+      <div class="last-game-card">
+        <h4>⚾ Actuación en su Último Partido</h4>
+        ${
+          lastGame
+            ? `
+          <div class="head">
+            <div>
+              <div class="last-game-line">
+                ${
+                  hasPitching && lastGame.pitchSummary
+                    ? `Pitcheo: <span style="color:var(--yellow)">${lastGame.pitchSummary.line}</span> (ERA ${lastGame.pitchSummary.era})`
+                    : ''
+                }
+                ${
+                  lastGame.batSummary
+                    ? `Bateo: <span style="color:var(--yellow)">${lastGame.batSummary.line}</span> ${
+                        lastGame.batSummary.extra ? '— ' + lastGame.batSummary.extra : ''
+                      }`
+                    : ''
+                }
+              </div>
+              <div class="muted" style="margin-top:6px;font-size:12px">
+                Juego: <b>${esc(teamName(lastGame.game.away))} vs ${esc(teamName(lastGame.game.home))}</b> • Fecha: ${esc(
+                lastGame.game.date
+              )} • Marcador: ${lastGame.game.awayScore} - ${lastGame.game.homeScore}
+              </div>
+            </div>
+          </div>`
+            : '<span class="muted">El jugador aún no tiene apariciones registradas en partidos oficiales.</span>'
+        }
+      </div>
+
+      <div class="grid2" style="margin-bottom:20px">
+        <!-- REGLA N° 11: Historial de Equipos del Jugador -->
+        <div class="panel">
+          <div class="head">
+            <h2>Historial de Franquicias</h2>
+            <span class="muted">Trayectoria en la liga</span>
+          </div>
+          <div class="tablewrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Temporada / Fecha</th>
+                  <th>Equipo</th>
+                  <th>Estatus</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Actual</td>
+                  <td>
+                    ${
+                      p.team
+                        ? `<span class="team-link" data-team-id="${p.team}">${esc(teamName(p.team))}</span>`
+                        : '<span class="muted">Agente libre</span>'
+                    }
+                  </td>
+                  <td><span class="tag" style="background:rgba(34,197,94,0.2);color:#4ade80">ACTUAL</span></td>
+                </tr>
+                ${(p.teamHistory || [])
+                  .filter(h => h.teamId !== p.team)
+                  .map(
+                    h => `
+                  <tr>
+                    <td>${esc(h.date || h.seasonName || 'Anterior')}</td>
+                    <td><span class="team-link" data-team-id="${h.teamId}">${esc(h.teamName || teamName(h.teamId))}</span></td>
+                    <td><span class="tag" style="background:#133322;color:var(--muted)">ANTERIOR</span></td>
+                  </tr>`
+                  )
+                  .join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Repertorio de Picheos (si aplica) -->
+        <div class="panel">
+          <div class="head">
+            <h2>Repertorio y Habilidades</h2>
+            <span class="muted">${isPitcher(p) ? 'Lanzamientos del pitcher' : 'Perfil ofensivo'}</span>
+          </div>
+          ${
+            isPitcher(p)
+              ? `
+            <div style="margin-top:10px">
+              ${
+                (p.pitchTypes || []).length
+                  ? (p.pitchTypes || []).map(pt => `<span class="tag" style="font-size:12px;padding:6px 10px;margin-bottom:6px">${esc(pt)}</span>`).join(' ')
+                  : '<span class="muted">No tiene lanzamientos seleccionados.</span>'
+              }
+            </div>
+            <div class="statgrid" style="margin-top:16px">
+              <div class="statbox"><small>ERA Total</small><b>${(p.pitch?.ERA || 0).toFixed(2)}</b></div>
+              <div class="statbox"><small>WHIP</small><b>${(p.pitch?.WHIP || 0).toFixed(2)}</b></div>
+              <div class="statbox"><small>Ponches (SO)</small><b>${p.pitch?.SO || 0}</b></div>
+            </div>`
+              : `
+            <div class="statgrid" style="margin-top:10px">
+              <div class="statbox"><small>AVG</small><b>${fmtAvg(p.bat?.AVG)}</b></div>
+              <div class="statbox"><small>OBP</small><b>${fmtAvg(p.bat?.OBP)}</b></div>
+              <div class="statbox"><small>SLG</small><b>${fmtAvg(p.bat?.SLG)}</b></div>
+              <div class="statbox"><small>OPS</small><b>${fmtAvg(p.bat?.OPS)}</b></div>
+            </div>`
+          }
+        </div>
+      </div>
+
+      <!-- REGLAS 8 Y 9: ESTADÍSTICAS POR TEMPORADA Y SELECTOR BATEO / PITCHEO -->
+      <div class="panel">
+        <div class="head">
+          <div>
+            <h2>Estadísticas Históricas de la Carrera</h2>
+            <span class="muted">Desglose oficial por temporada (Baseball-Reference style)</span>
+          </div>
+          ${
+            hasPitching
+              ? `
+            <div class="role-tabs">
+              <button id="tabBattingBtn" class="${activePlayerTab === 'batting' ? 'active' : ''}">BATEO</button>
+              <button id="tabPitchingBtn" class="${activePlayerTab === 'pitching' ? 'active' : ''}">PITCHEO</button>
+            </div>`
+              : ''
+          }
+        </div>
+
+        ${
+          activePlayerTab === 'batting' || !hasPitching
+            ? `
+          <!-- Tabla de Bateo por Temporada -->
+          <div class="tablewrap" style="margin-top:10px">
+            <table>
+              <thead>
+                <tr>
+                  <th>Temporada</th>
+                  <th>Equipo</th>
+                  <th>PA</th>
+                  <th>AB</th>
+                  <th>R</th>
+                  <th>H</th>
+                  <th>2B</th>
+                  <th>3B</th>
+                  <th>HR</th>
+                  <th>RBI</th>
+                  <th>BB</th>
+                  <th>SO</th>
+                  <th>SB</th>
+                  <th>AVG</th>
+                  <th>OBP</th>
+                  <th>SLG</th>
+                  <th>OPS</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${Object.entries(seasonsMap)
+                  .map(([sId, sPas]) => {
+                    const st = batterStats(p.id, sPas);
+                    return `
+                    <tr>
+                      <td><b>${esc(seasonName(sId))}</b></td>
+                      <td>${esc(teamName(p.team))}</td>
+                      <td>${st.PA}</td>
+                      <td>${st.AB}</td>
+                      <td>${st.R}</td>
+                      <td><b>${st.H}</b></td>
+                      <td>${st.D}</td>
+                      <td>${st.T}</td>
+                      <td><b>${st.HR}</b></td>
+                      <td>${st.RBI}</td>
+                      <td>${st.BB}</td>
+                      <td>${st.SO}</td>
+                      <td>${st.SB}</td>
+                      <td><b>${fmtAvg(st.AVG)}</b></td>
+                      <td>${fmtAvg(st.OBP)}</td>
+                      <td>${fmtAvg(st.SLG)}</td>
+                      <td><b>${fmtAvg(st.OPS)}</b></td>
+                    </tr>`;
+                  })
+                  .join('')}
+                <!-- Total de Carrera -->
+                <tr style="background:rgba(250,204,21,0.1);font-weight:800">
+                  <td style="color:var(--yellow)">TOTAL CARRERA</td>
+                  <td>${esc(teamName(p.team))}</td>
+                  <td>${p.bat?.PA || 0}</td>
+                  <td>${p.bat?.AB || 0}</td>
+                  <td>${p.bat?.R || 0}</td>
+                  <td><b>${p.bat?.H || 0}</b></td>
+                  <td>${p.bat?.D || 0}</td>
+                  <td>${p.bat?.T || 0}</td>
+                  <td><b>${p.bat?.HR || 0}</b></td>
+                  <td>${p.bat?.RBI || 0}</td>
+                  <td>${p.bat?.BB || 0}</td>
+                  <td>${p.bat?.SO || 0}</td>
+                  <td>${p.bat?.SB || 0}</td>
+                  <td><b>${fmtAvg(p.bat?.AVG)}</b></td>
+                  <td>${fmtAvg(p.bat?.OBP)}</td>
+                  <td>${fmtAvg(p.bat?.SLG)}</td>
+                  <td><b>${fmtAvg(p.bat?.OPS)}</b></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>`
+            : `
+          <!-- Tabla de Pitcheo por Temporada -->
+          <div class="tablewrap" style="margin-top:10px">
+            <table>
+              <thead>
+                <tr>
+                  <th>Temporada</th>
+                  <th>Equipo</th>
+                  <th>BF</th>
+                  <th>IP</th>
+                  <th>H</th>
+                  <th>R</th>
+                  <th>ER</th>
+                  <th>BB</th>
+                  <th>SO</th>
+                  <th>HR</th>
+                  <th>ERA</th>
+                  <th>WHIP</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${Object.entries(seasonsMap)
+                  .map(([sId, sPas]) => {
+                    const pst = pitcherStats(p.id, sPas);
+                    return `
+                    <tr>
+                      <td><b>${esc(seasonName(sId))}</b></td>
+                      <td>${esc(teamName(p.team))}</td>
+                      <td>${pst.BF}</td>
+                      <td><b>${pst.IP}</b></td>
+                      <td>${pst.H}</td>
+                      <td>${pst.R}</td>
+                      <td>${pst.ER}</td>
+                      <td>${pst.BB}</td>
+                      <td><b>${pst.SO}</b></td>
+                      <td>${pst.HR}</td>
+                      <td><b>${pst.ERA.toFixed(2)}</b></td>
+                      <td><b>${pst.WHIP.toFixed(2)}</b></td>
+                    </tr>`;
+                  })
+                  .join('')}
+                <!-- Total Carrera Pitcheo -->
+                <tr style="background:rgba(250,204,21,0.1);font-weight:800">
+                  <td style="color:var(--yellow)">TOTAL CARRERA</td>
+                  <td>${esc(teamName(p.team))}</td>
+                  <td>${p.pitch?.BF || 0}</td>
+                  <td><b>${p.pitch?.IP || '0.0'}</b></td>
+                  <td>${p.pitch?.H || 0}</td>
+                  <td>${p.pitch?.R || 0}</td>
+                  <td>${p.pitch?.ER || 0}</td>
+                  <td>${p.pitch?.BB || 0}</td>
+                  <td><b>${p.pitch?.SO || 0}</b></td>
+                  <td>${p.pitch?.HR || 0}</td>
+                  <td><b>${(p.pitch?.ERA || 0).toFixed(2)}</b></td>
+                  <td><b>${(p.pitch?.WHIP || 0).toFixed(2)}</b></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>`
+        }
+      </div>
+    `;
+
+    // Botones de pestañas Bateo / Pitcheo
+    const bBtn = $('#tabBattingBtn');
+    const pBtn = $('#tabPitchingBtn');
+    if (bBtn) {
+      bBtn.onclick = () => {
+        activePlayerTab = 'batting';
+        renderPlayerProfile();
+      };
+    }
+    if (pBtn) {
+      pBtn.onclick = () => {
+        activePlayerTab = 'pitching';
+        renderPlayerProfile();
+      };
+    }
+  }
+
+  // ----------------------------------------------------
+  // RENDER: PANELES GENERALES DE LA LIGA
+  // ----------------------------------------------------
+  function renderTeams() {
+    const el = $('#teamsList');
+    if (!db.teams.length) {
+      el.innerHTML = empty('No hay equipos', 'Usa “Crear equipo” para comenzar.');
+      return;
+    }
+    el.innerHTML = `
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Equipo</th>
+              <th>Ciudad</th>
+              <th>Manager</th>
+              <th>Récord</th>
+              <th>Jugadores Actuales</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${db.teams
+              .map(t => {
+                const rec = calculateTeamRecord(t.id);
+                const actualRoster = teamPlayers(t.id);
+                return `
+              <tr>
+                <td>
+                  ${t.logo ? `<img class="teamlogo" src="${t.logo}" alt="">` : ''}
+                  <span class="team-link" data-team-id="${t.id}" style="font-size:14px">${esc(t.name)}</span>
+                </td>
+                <td>${esc(t.city || '—')}</td>
+                <td>${esc(t.manager || '—')}</td>
+                <td><b style="color:var(--yellow)">${rec.w} - ${rec.l}</b> (${rec.pct.toFixed(3).replace('0.', '.')})</td>
+                <td><b>${actualRoster.length}</b> jugadores</td>
+                <td class="actions">
+                  <button class="btn yellow" data-view-team="${t.id}">Ver Perfil</button>
+                  <button class="btn admin-only" data-edit-team="${t.id}">Editar</button>
+                  <button class="btn danger admin-only" data-del-team="${t.id}">Eliminar</button>
+                </td>
+              </tr>`;
+              })
+              .join('')}
+          </tbody>
+        </table>
+      </div>`;
+
+    $$('[data-view-team]').forEach(b => (b.onclick = () => openTeamProfile(b.dataset.viewTeam)));
+    $$('[data-edit-team]').forEach(
+      b =>
+        (b.onclick = () => {
+          if (!checkAdmin()) return;
+          openModal('teamModal');
+          prepareTeamModal(b.dataset.editTeam);
+        })
+    );
+    $$('[data-del-team]').forEach(
+      b =>
+        (b.onclick = () => {
+          const tid = b.dataset.delTeam;
+          requestDoubleDelete(
+            `Equipo: ${teamName(tid)}`,
+            'Esta acción eliminará el equipo de la liga y desvinculará a sus jugadores.',
+            () => remove('teams', tid, 'teams')
+          );
+        })
+    );
+  }
+
+  function renderPlayers() {
+    const el = $('#playersList');
+    if (!db.players.length) {
+      el.innerHTML = empty('No hay jugadores', 'Crea los jugadores de tus equipos.');
+      return;
+    }
+    el.innerHTML = `
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Jugador</th>
+              <th>Equipo Actual</th>
+              <th>Rol</th>
+              <th>Posición</th>
+              <th>AVG</th>
+              <th>HR</th>
+              <th>ERA</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${db.players
+              .map(
+                p => `
+              <tr>
+                <td><b>#${esc(p.number || '—')}</b></td>
+                <td>
+                  ${p.photo ? `<img class="avatar" src="${p.photo}" alt="">` : ''}
+                  <span class="player-link" data-player-id="${p.id}" style="font-size:14px">${esc(p.name)}</span>
+                </td>
+                <td>
+                  ${
+                    p.team
+                      ? `<span class="team-link" data-team-id="${p.team}">${esc(teamName(p.team))}</span>`
+                      : '<span class="muted">Sin equipo</span>'
+                  }
+                </td>
+                <td>${p.role === 'two-way' ? 'Two-Way' : isPitcher(p) ? 'Lanzador' : 'Bateador'}</td>
+                <td>${esc(p.position || '—')}</td>
+                <td><b>${fmtAvg(p.bat?.AVG)}</b></td>
+                <td>${p.bat?.HR || 0}</td>
+                <td>${isPitcher(p) ? (p.pitch?.ERA || 0).toFixed(2) : '—'}</td>
+                <td class="actions">
+                  <button class="btn yellow" data-view-player="${p.id}">Ver Perfil</button>
+                  <button class="btn admin-only" data-edit-player="${p.id}">Editar</button>
+                  <button class="btn danger admin-only" data-del-player="${p.id}">Eliminar</button>
+                </td>
+              </tr>`
+              )
+              .join('')}
+          </tbody>
+        </table>
+      </div>`;
+
+    $$('[data-view-player]').forEach(b => (b.onclick = () => openPlayerProfile(b.dataset.viewPlayer)));
+    $$('[data-edit-player]').forEach(
+      b =>
+        (b.onclick = () => {
+          if (!checkAdmin()) return;
+          openModal('playerModal');
+          preparePlayerModal(b.dataset.editPlayer);
+        })
+    );
+    $$('[data-del-player]').forEach(
+      b =>
+        (b.onclick = () => {
+          const pid = b.dataset.delPlayer;
+          requestDoubleDelete(
+            `Jugador: ${playerName(pid)}`,
+            'Esta acción eliminará al jugador de la base de datos.',
+            () => remove('players', pid, 'players')
+          );
+        })
+    );
+  }
+
+  function gameStatus(g) {
+    return (g.batLog || []).length ? 'BAT LOG completo' : 'BAT LOG pendiente';
+  }
+
+  function gameHTML(g) {
+    const sr = g.series ? getSeries(g.series) : null;
+    const paCount = (g.batLog || []).length;
+    return `
+      <div class="gamecard">
+        <div class="head">
+          <span class="muted">${esc(g.date)} ${esc(g.time)} • ${esc(seasonName(g.season))}</span>
+          <span class="pill">${sr ? `Serie: ${esc(teamName(sr.teamA))} vs ${esc(teamName(sr.teamB))}` : 'Juego de liga'}</span>
+        </div>
+        <div class="teamscore">
+          <div><span class="team-link" data-team-id="${g.away}" style="font-size:16px">${esc(teamName(g.away))}</span></div>
+          <div class="score">${g.awayScore} — ${g.homeScore}</div>
+          <div><span class="team-link" data-team-id="${g.home}" style="font-size:16px">${esc(teamName(g.home))}</span></div>
+        </div>
+        <div class="muted" style="text-align:center;margin-top:8px">
+          Juego ${esc(g.gameNumber || '—')} ${g.stadium ? '• ' + esc(g.stadium) : ''}
+        </div>
+        <div class="head" style="margin-top:12px">
+          <span class="tag">${gameStatus(g)}</span>
+          <span class="muted">${paCount} apariciones registradas</span>
+        </div>
+        <div class="actions" style="margin-top:11px">
+          <button class="btn yellow" data-score-game="${g.id}">BAT LOG / iSCORE</button>
+          <button class="btn admin-only" data-edit-game="${g.id}">Editar</button>
+          <button class="btn danger admin-only" data-del-game="${g.id}">Eliminar</button>
+        </div>
+      </div>`;
+  }
+
+  function renderGames() {
+    const el = $('#gamesList');
+    el.innerHTML = db.games.length
+      ? db.games.slice().reverse().map(gameHTML).join('')
+      : empty('No hay juegos', 'Registra el primer partido y asígnalo a una temporada.');
+
+    $$('[data-del-game]').forEach(
+      b =>
+        (b.onclick = () => {
+          const gid = b.dataset.delGame;
+          const g = getGame(gid);
+          requestDoubleDelete(
+            `Partido: ${teamName(g?.away)} vs ${teamName(g?.home)}`,
+            'Esta acción eliminará el partido y su BAT LOG.',
+            () => remove('games', gid, 'games')
+          );
+        })
+    );
+    $$('[data-edit-game]').forEach(
+      b =>
+        (b.onclick = () => {
+          if (!checkAdmin()) return;
+          openModal('gameModal');
+          prepareGameModal(b.dataset.editGame);
+        })
+    );
+    $$('[data-score-game]').forEach(b => (b.onclick = () => openScorebook(b.dataset.scoreGame)));
+  }
+
+  // REGLAS N° 5: GESTIÓN Y ELIMINACIÓN DE TEMPORADAS POR EL ADMINISTRADOR
+  function seasonHTML(s) {
+    const series = db.series.filter(x => x.season === s.id);
+    const body =
+      s.type === 'elimination'
+        ? series.length
+          ? series
+              .map(sr => {
+                const pa = db.games
+                  .filter(g => g.series === sr.id)
+                  .reduce((n, g) => n + (g.batLog || []).length, 0);
+                return `
+                  <div class="series">
+                    <div class="head">
+                      <div>
+                        <span class="team-link" data-team-id="${sr.teamA}">${esc(teamName(sr.teamA))}</span> vs 
+                        <span class="team-link" data-team-id="${sr.teamB}">${esc(teamName(sr.teamB))}</span>
+                      </div>
+                      <span class="pill">${esc(sr.status)}</span>
+                    </div>
+                    <div class="muted" style="margin-top:7px">
+                      Mejor de ${sr.bestOf} • ${sr.winsA} — ${sr.winsB} • ${
+                  db.games.filter(g => g.series === sr.id).length
+                } juegos • ${pa} PA registradas
+                    </div>
+                  </div>`;
+              })
+              .join('')
+          : empty('No hay series', 'Pulsa “+ Serie” para crear el enfrentamiento.')
+        : `<div class="muted" style="margin-top:10px">Esta liga tendrá <b>${esc(
+            s.gamesCount || 0
+          )}</b> juegos registrados desde la sección Juegos.</div>`;
+
+    return `
+      <div class="gamecard">
+        <div class="head">
+          <div>
+            <b style="font-size:18px;color:var(--yellow)">${esc(s.name)}</b>
+            <div class="muted">${s.type === 'league' ? 'Liga' : 'Eliminatoria'} • ${esc(s.start || '')} ${
+      s.end ? '→ ' + esc(s.end) : ''
+    }</div>
+          </div>
+          <div class="actions">
+            <span class="tag">${
+              s.type === 'league' ? `${esc(s.gamesCount || 0)} juegos` : `Mejor de ${esc(s.bestOf)}`
+            }</span>
+            <button class="btn admin-only" data-edit-season="${s.id}">Editar</button>
+            <button class="btn danger admin-only" data-del-season="${s.id}">Eliminar</button>
+            ${s.type === 'elimination' ? `<button class="btn yellow admin-only" data-new-series="${s.id}">+ Serie</button>` : ''}
+          </div>
+        </div>
+        ${body}
+      </div>`;
+  }
+
+  function renderSeason() {
+    const el = $('#seasonList');
+    el.innerHTML = db.seasons.length
+      ? db.seasons.map(seasonHTML).join('')
+      : empty('No hay temporadas', 'Crea una temporada y elige si será Liga o Eliminatoria.');
+
+    $('#homeSeasonList').innerHTML = db.seasons.length
+      ? db.seasons
+          .slice(0, 4)
+          .map(
+            s => `
+            <div class="gamecard">
+              <b>${esc(s.name)}</b>
+              <div class="muted">${
+                s.type === 'league'
+                  ? 'Liga — ' + esc(s.gamesCount || 0) + ' juegos'
+                  : 'Eliminatoria — mejor de ' + esc(s.bestOf)
+              }</div>
+            </div>`
+          )
+          .join('')
+      : empty('No hay temporadas', 'Crea tu primera competencia.');
+
+    $$('[data-edit-season]').forEach(
+      b =>
+        (b.onclick = () => {
+          if (!checkAdmin()) return;
+          openModal('seasonModal');
+          prepareSeasonModal(b.dataset.editSeason);
+        })
+    );
+    $$('[data-del-season]').forEach(
+      b =>
+        (b.onclick = () => {
+          const sid = b.dataset.delSeason;
+          const s = db.seasons.find(x => x.id === sid);
+          requestDoubleDelete(
+            `Temporada: ${s?.name || ''}`,
+            'Esta acción eliminará la temporada y sus configuraciones asociadas.',
+            () => remove('seasons', sid, 'season')
+          );
+        })
+    );
+    $$('[data-new-series]').forEach(
+      b =>
+        (b.onclick = () => {
+          if (!checkAdmin()) return;
+          openModal('seriesModal');
+          prepareSeriesModal();
+          setTimeout(() => {
+            $('#seriesSeason').value = b.dataset.newSeries;
+          }, 0);
+        })
+    );
+  }
+
+  function renderStandings() {
+    const el = $('#standingsList');
+    if (!db.teams.length) {
+      el.innerHTML = empty('No hay equipos', 'Las posiciones aparecerán al registrar equipos y juegos.');
+      return;
+    }
+    const rows = db.teams
+      .map(t => {
+        const rec = calculateTeamRecord(t.id);
+        return { ...t, ...rec };
+      })
+      .sort((a, b) => b.pct - a.pct || b.w - a.w || b.diff - a.diff);
+
+    el.innerHTML = `
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Equipo</th>
+              <th>G</th>
+              <th>P</th>
+              <th>PCT</th>
+              <th>CA</th>
+              <th>CP</th>
+              <th>DIF</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows
+              .map(
+                (t, i) => `
+              <tr>
+                <td><b>${i + 1}</b></td>
+                <td>
+                  ${t.logo ? `<img class="teamlogo" src="${t.logo}" alt="">` : ''}
+                  <span class="team-link" data-team-id="${t.id}" style="font-size:14px">${esc(t.name)}</span>
+                </td>
+                <td><b style="color:var(--yellow)">${t.w}</b></td>
+                <td>${t.l}</td>
+                <td><b>${t.pct.toFixed(3).replace('0.', '.')}</b></td>
+                <td>${t.rs}</td>
+                <td>${t.ra}</td>
+                <td style="color:${t.diff >= 0 ? 'var(--yellow)' : 'var(--red)'}"><b>${
+                  t.diff >= 0 ? '+' + t.diff : t.diff
+                }</b></td>
+              </tr>`
+              )
+              .join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  function renderStats() {
+    const el = $('#statsArea');
+    if (!db.players.length) {
+      el.innerHTML = empty('Sin estadísticas', 'Crea jugadores y registra BAT LOG / iSCORE.');
+      return;
+    }
+    const pas = allPAs();
+    const rows = db.players.map(p => ({
+      p,
+      s: batterStats(p.id, pas),
+      ps: pitcherStats(p.id, pas)
+    }));
+
+    el.innerHTML = `
+      <div class="head" style="margin-bottom:12px">
+        <div>
+          <h3 style="margin:0">Bateo y Pitcheo Oficial</h3>
+          <div class="muted">Las estadísticas nacen exclusivamente del BAT LOG / iSCORE de cada partido.</div>
+        </div>
+        <button class="btn blue" data-open-face>⚔ Cara a Cara</button>
+      </div>
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Jugador</th>
+              <th>Equipo</th>
+              <th>PA</th>
+              <th>AB</th>
+              <th>R</th>
+              <th>H</th>
+              <th>HR</th>
+              <th>RBI</th>
+              <th>BB</th>
+              <th>SO</th>
+              <th>SB</th>
+              <th>AVG</th>
+              <th>OBP</th>
+              <th>OPS</th>
+              <th>IP</th>
+              <th>H (P)</th>
+              <th>SO (P)</th>
+              <th>ERA</th>
+              <th>WHIP</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows
+              .map(
+                ({ p, s, ps }) => `
+              <tr>
+                <td>
+                  <span class="player-link" data-player-id="${p.id}">${esc(p.name)}</span>
+                </td>
+                <td>
+                  ${
+                    p.team
+                      ? `<span class="team-link" data-team-id="${p.team}">${esc(teamName(p.team))}</span>`
+                      : '<span class="muted">—</span>'
+                  }
+                </td>
+                <td>${s.PA}</td>
+                <td>${s.AB}</td>
+                <td>${s.R}</td>
+                <td><b>${s.H}</b></td>
+                <td>${s.HR}</td>
+                <td>${s.RBI}</td>
+                <td>${s.BB}</td>
+                <td>${s.SO}</td>
+                <td>${s.SB}</td>
+                <td><b style="color:var(--yellow)">${fmtAvg(s.AVG)}</b></td>
+                <td>${fmtAvg(s.OBP)}</td>
+                <td>${fmtAvg(s.OPS)}</td>
+                <td>${ps.IP}</td>
+                <td>${ps.H}</td>
+                <td>${ps.SO}</td>
+                <td>${isPitcher(p) ? ps.ERA.toFixed(2) : '—'}</td>
+                <td>${isPitcher(p) ? ps.WHIP.toFixed(2) : '—'}</td>
+              </tr>`
+              )
+              .join('')}
+          </tbody>
+        </table>
+      </div>
+      <div style="margin-top:14px" class="actions">
+        <button class="btn blue" data-open-face>Seleccionar bateador vs lanzador</button>
+      </div>`;
+
+    $$('[data-open-face]').forEach(b => (b.onclick = () => openFaceoff()));
+  }
+
+  function renderLeaders() {
+    const el = $('#leadersArea');
+    if (!db.players.length) {
+      el.innerHTML = empty('Sin líderes', 'Registra jugadores y BAT LOG.');
+      return;
+    }
+    const source = allPAs();
+    const hitters = db.players
+      .map(p => ({ p, s: batterStats(p.id, source) }))
+      .filter(x => x.s.PA > 0)
+      .sort((a, b) => b.s.AVG - a.s.AVG || b.s.H - a.s.H)
+      .slice(0, 10);
+
+    el.innerHTML = hitters.length
+      ? '<h3>Líderes de Bateo — AVG</h3>' +
+        hitters
+          .map(
+            (x, i) => `
+          <div class="gamecard">
+            <div class="head">
+              <div>
+                <b>${i + 1}. <span class="player-link" data-player-id="${x.p.id}">${esc(x.p.name)}</span></b>
+                <div class="muted">
+                  ${
+                    x.p.team
+                      ? `<span class="team-link" data-team-id="${x.p.team}">${esc(teamName(x.p.team))}</span>`
+                      : 'Sin equipo'
+                  }
+                </div>
+              </div>
+              <strong style="font-size:22px;color:var(--yellow)">${fmtAvg(x.s.AVG)}</strong>
+            </div>
+            <div class="muted" style="margin-top:7px">
+              ${x.s.H} Hits • ${x.s.HR} HR • ${x.s.RBI} RBI • ${x.s.SO} SO
+            </div>
+          </div>`
+          )
+          .join('')
+      : empty('Sin líderes', 'Aún no hay BAT LOG registrados.');
+  }
+
+  function renderHistory() {
+    const el = $('#historyArea');
+    el.innerHTML = db.events.length
+      ? db.events
+          .slice()
+          .reverse()
+          .map(
+            e => `
+          <div class="gamecard">
+            <b style="color:var(--yellow)">${esc(e.type)}</b>
+            <div class="muted">${esc(e.text)}</div>
+            <small class="muted">${esc(e.date)}</small>
+          </div>`
+          )
+          .join('')
+      : empty('Sin historial', 'Los registros administrativos aparecerán aquí.');
+  }
+
+  function renderHomeGames() {
+    const el = $('#homeGamesList');
+    el.innerHTML = db.games.length
+      ? db.games.slice().reverse().slice(0, 4).map(gameHTML).join('')
+      : empty('No hay juegos', 'Los partidos que registres aparecerán aquí.');
+  }
+
+  // REGLAS N° 2 Y 19: PANEL DE ADMINISTRACIÓN DINÁMICO CON PERMISOS
+  function renderAdminPanel() {
+    const el = $('#adminPanelArea');
+    if (!el) return;
+
+    if (!isAdmin) {
+      el.innerHTML = `
+        <div class="panel" style="text-align:center;max-width:700px;margin:20px auto;border-color:var(--yellow)">
+          <div style="font-size:48px;margin-bottom:12px">🔒</div>
+          <h2>Modo Espectador Activo</h2>
+          <p style="color:var(--text-white);line-height:1.6">
+            Actualmente estás en modo de consulta. Puedes ver todas las temporadas, equipos, jugadores, partidos, comparaciones y estadísticas de la liga.
+          </p>
+          <div class="notice" style="background:#082416;color:var(--yellow);margin:16px 0">
+            Para crear, modificar o eliminar elementos de la liga, debes identificarte como <b>Administrador</b>.
+          </div>
+          <button class="btn yellow" id="openAdminLoginBtn" style="padding:12px 24px;font-size:14px">
+            🔑 Iniciar Sesión como Administrador
+          </button>
+        </div>`;
+
+      $('#openAdminLoginBtn').onclick = () => {
+        openModal('adminLoginModal');
+      };
+      return;
+    }
+
+    el.innerHTML = `
+      <div class="grid2">
+        <div class="panel">
+          <h2>Administración de la Liga</h2>
+          <p class="muted">Acceso exclusivo del Administrador para crear y gestionar la competencia.</p>
+          <div class="actions" style="margin-top:16px">
+            <button class="btn yellow" data-modal="teamModal">+ Crear equipo</button>
+            <button class="btn yellow" data-modal="playerModal">+ Crear jugador</button>
+            <button class="btn yellow" data-modal="seasonModal">+ Crear temporada</button>
+            <button class="btn yellow" data-modal="gameModal">+ Registrar juego</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Parámetros y Seguridad</h2>
+          <p class="muted">Ajusta los parámetros generales de la liga o cierra tu sesión de administrador.</p>
+          <form id="settingsForm" style="margin-top:12px">
+            <div class="field">
+              <label>Nombre de la Liga</label>
+              <input name="leagueName" value="${esc(db.settings?.leagueName || 'ROSMIL LEAGUE')}">
+            </div>
+            <div class="field" style="margin-top:10px">
+              <label>Nueva Clave de Administrador (PIN)</label>
+              <input name="adminPin" type="password" value="${esc(db.settings?.adminPin || 'admin123')}">
+            </div>
+            <div class="formactions" style="margin-top:14px">
+              <button type="submit" class="btn yellow">Guardar Parámetros</button>
+              <button type="button" class="btn danger" id="adminLogoutBtn">Cerrar Sesión Admin</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:20px;border-color:var(--red)">
+        <h2 style="color:var(--red)">Zona de Riesgo: Base de Datos</h2>
+        <p class="muted">Borrar permanentemente todos los equipos, jugadores, temporadas y juegos almacenados.</p>
+        <button class="btn danger-strong" id="clearData">Borrar todos los datos de la liga</button>
+      </div>`;
+
+    // Handler de guardado de configuración
+    $('#settingsForm').onsubmit = e => {
+      e.preventDefault();
+      if (!checkAdmin()) return;
+      const f = new FormData(e.target);
+      db.settings.leagueName = f.get('leagueName') || 'ROSMIL LEAGUE';
+      db.settings.adminPin = f.get('adminPin') || 'admin123';
+      save();
+      alert('Parámetros de la liga actualizados correctamente.');
+    };
+
+    // Logout
+    $('#adminLogoutBtn').onclick = () => {
+      isAdmin = false;
+      sessionStorage.removeItem('rosmil_is_admin');
+      updateRoleUI();
+      renderAll();
+      show('home');
+    };
+
+    // Borrado con doble confirmación
+    $('#clearData').onclick = () => {
+      requestDoubleDelete(
+        'TODA LA BASE DE DATOS DE LA LIGA',
+        'Se eliminarán todos los equipos, jugadores, temporadas y partidos registrados sin posibilidad de recuperación.',
+        () => {
+          localStorage.removeItem(KEY);
+          db = {
+            teams: [],
+            players: [],
+            games: [],
+            seasons: [],
+            series: [],
+            events: [],
+            settings: { adminPin: 'admin123', leagueName: 'ROSMIL LEAGUE' }
+          };
+          if (typeof firebaseInitialized !== 'undefined' && firebaseInitialized && firestoreDb) {
+            firestoreDb.collection('leagues').doc('main').set(db);
+          }
+          recalcStats();
+          renderAll();
+          alert('Todos los datos han sido eliminados.');
+          show('home');
+        }
+      );
+    };
+  }
+
+  function renderAll() {
+    populateSelects();
+    recalcStats();
+    updateRoleUI();
+
+    if ($('#homeTeams')) $('#homeTeams').textContent = db.teams.length;
+    if ($('#homePlayers')) $('#homePlayers').textContent = db.players.length;
+    if ($('#homeSeasons')) $('#homeSeasons').textContent = db.seasons.length;
+    if ($('#homeGames')) $('#homeGames').textContent = db.games.length;
+
+    renderTeams();
+    renderPlayers();
+    renderGames();
+    renderSeason();
+    renderStandings();
+    renderStats();
+    renderLeaders();
+    renderHistory();
+    renderHomeGames();
+    renderAdminPanel();
+
+    if (activeTeamId && $('#teamProfile').classList.contains('active')) {
+      renderTeamProfile();
+    }
+    if (activePlayerId && $('#playerProfile').classList.contains('active')) {
+      renderPlayerProfile();
+    }
+  }
+
+  // ----------------------------------------------------
+  // ELIMINACIÓN GENERAL CON DOBLE CONFIRMACIÓN
+  // ----------------------------------------------------
+  function remove(type, key, view) {
+    if (!checkAdmin()) return;
+
+    if (type === 'games') {
+      db.games = db.games.filter(x => x.id !== key);
+      updateSeriesFromGames();
+      recalcStats();
+    } else if (type === 'teams') {
+      db.teams = db.teams.filter(x => x.id !== key);
+      // Desvincular jugadores pero preservar su historial
+      db.players.forEach(p => {
+        if (p.team === key) {
+          p.teamHistory.push({
+            teamId: key,
+            teamName: 'Equipo eliminado',
+            date: new Date().toLocaleDateString()
+          });
+          p.team = '';
+        }
+      });
+    } else {
+      db[type] = db[type].filter(x => x.id !== key);
+    }
+
+    save();
+    show(view);
+  }
+
+  // ----------------------------------------------------
+  // ANOTADOR BAT LOG / iSCORE
+  // ----------------------------------------------------
+  function resultLabel(r) {
+    return RESULT_OPTIONS.find(x => x[0] === r)?.[1] || r;
+  }
+
+  function batterStatsForGame(g, teamId) {
+    return db.players
+      .filter(p => p.team === teamId)
+      .map(p => ({
+        p,
+        s: batterStats(
+          p.id,
+          (g.batLog || []).map(x => ({ ...x, gameId: g.id }))
+        )
+      }))
+      .filter(x => x.s.PA > 0);
+  }
+
+  function pitcherStatsForGame(g, teamId) {
+    return db.players
+      .filter(p => p.team === teamId && isPitcher(p))
+      .map(p => ({
+        p,
+        s: pitcherStats(
+          p.id,
+          (g.batLog || []).map(x => ({ ...x, gameId: g.id }))
+        )
+      }))
+      .filter(x => x.s.BF > 0);
+  }
+
+  function renderGamePlayerMini(rows) {
+    return rows.length
+      ? rows
+          .map(
+            x => `
+        <div class="playercard">
+          <div class="head">
+            <div>
+              <span class="player-link" data-player-id="${x.p.id}" style="font-size:14px">${esc(x.p.name)}</span>
+              <div class="subtle">PA ${x.s.PA} • AB ${x.s.AB}</div>
+            </div>
+            <strong style="color:var(--yellow)">${fmtAvg(x.s.AVG)}</strong>
+          </div>
+          <div class="metricrow">
+            <div class="metric"><b>${x.s.H}</b><small>H</small></div>
+            <div class="metric"><b>${x.s.HR}</b><small>HR</small></div>
+            <div class="metric"><b>${x.s.RBI}</b><small>RBI</small></div>
+            <div class="metric"><b>${x.s.SO}</b><small>SO</small></div>
+          </div>
+        </div>`
+          )
+          .join('')
+      : empty('Sin apariciones', 'Todavía no hay bateadores registrados.');
+  }
+
+  function renderPitcherMini(rows) {
+    return rows.length
+      ? rows
+          .map(
+            x => `
+        <div class="playercard">
+          <div class="head">
+            <div>
+              <span class="player-link" data-player-id="${x.p.id}" style="font-size:14px">${esc(x.p.name)}</span>
+              <div class="subtle">BF ${x.s.BF}</div>
+            </div>
+            <strong style="color:var(--yellow)">ERA ${x.s.ERA.toFixed(2)}</strong>
+          </div>
+          <div class="metricrow">
+            <div class="metric"><b>${x.s.IP}</b><small>IP</small></div>
+            <div class="metric"><b>${x.s.SO}</b><small>SO</small></div>
+            <div class="metric"><b>${x.s.H}</b><small>H</small></div>
+            <div class="metric"><b>${x.s.WHIP.toFixed(2)}</b><small>WHIP</small></div>
+          </div>
+        </div>`
+          )
+          .join('')
+      : empty('Sin pitchers', 'No hay apariciones con pitchers registrados.');
+  }
+
+  function openScorebook(gid) {
+    const g = getGame(gid);
+    if (!g) return;
+    $('#scoreModal').classList.add('open');
+    renderScorebook(g);
+  }
+
+  function renderScorebook(g) {
+    const log = g.batLog || [];
+    const rows = log
+      .map(
+        pa => `
+      <div class="eventrow">
+        <div>${esc(pa.inning)}</div>
+        <div>${pa.half === 'away' ? 'VIS' : 'LOC'}</div>
+        <div>
+          <span class="player-link" data-player-id="${pa.batter}">${esc(playerName(pa.batter))}</span>
+          <div class="subtle"><span class="team-link" data-team-id="${pa.half === 'away' ? g.away : g.home}">${esc(teamName(pa.half === 'away' ? g.away : g.home))}</span></div>
+        </div>
+        <div><span class="player-link" data-player-id="${pa.pitcher}">${esc(playerName(pa.pitcher))}</span></div>
+        <div>
+          <span class="resultPill">${esc(resultLabel(pa.result))}</span>${
+          pa.pitchType ? ` <span class="tag">${esc(pa.pitchType)}</span>` : ''
+        }
+        </div>
+        <div>${Number(pa.outs) || 0} out</div>
+        <div class="actions">
+          <button class="btn admin-only" data-edit-pa="${pa.id}">Editar</button>
+          <button class="btn danger admin-only" data-del-pa="${pa.id}">×</button>
+        </div>
+      </div>`
+      )
+      .join('');
+
+    const bsAway = batterStatsForGame(g, g.away);
+    const bsHome = batterStatsForGame(g, g.home);
+    const psAway = pitcherStatsForGame(g, g.away);
+    const psHome = pitcherStatsForGame(g, g.home);
+
+    const awayHits = bsAway.reduce((acc, row) => acc + row.s.H, 0);
+    const homeHits = bsHome.reduce((acc, row) => acc + row.s.H, 0);
+
+    $('#scorebookArea').innerHTML = `
+      <div class="head">
+        <div>
+          <div class="eyebrow">BAT LOG / iSCORE OFICIAL</div>
+          <h2 style="margin:0">
+            <span class="team-link" data-team-id="${g.away}">${esc(teamName(g.away))}</span> ${g.awayScore} — ${g.homeScore} 
+            <span class="team-link" data-team-id="${g.home}">${esc(teamName(g.home))}</span>
+          </h2>
+          <div class="muted">${esc(seasonName(g.season))} • Juego ${esc(g.gameNumber || '—')} • ${esc(g.date)}</div>
+        </div>
+        <div class="actions">
+          <button class="btn yellow admin-only" data-add-pa="${g.id}">+ Registrar PA</button>
+          <button class="btn blue" data-open-face>⚔ Cara a cara</button>
+          <button class="btn close">Cerrar</button>
+        </div>
+      </div>
+      <div class="notice good" style="margin-top:14px">
+        ${
+          log.length
+            ? `Este juego tiene <b>${log.length}</b> apariciones registradas; esas apariciones alimentan las estadísticas oficiales.`
+            : 'Este juego todavía no tiene BAT LOG. El resultado numérico no modifica las estadísticas individuales hasta registrar las apariciones.'
+        }
+      </div>
+      <div class="statgrid">
+        <div class="statbox"><small>PA registradas</small><b>${log.length}</b></div>
+        <div class="statbox"><small>Hits Visitante</small><b>${awayHits}</b></div>
+        <div class="statbox"><small>Hits Local</small><b>${homeHits}</b></div>
+        <div class="statbox"><small>SO Visitante</small><b>${psAway.reduce((n, x) => n + x.s.SO, 0)}</b></div>
+        <div class="statbox"><small>SO Local</small><b>${psHome.reduce((n, x) => n + x.s.SO, 0)}</b></div>
+        <div class="statbox"><small>Estatus</small><b style="color:var(--yellow)">${log.length ? 'Activo' : 'Vacío'}</b></div>
+      </div>
+      <div class="scorebook">
+        <div class="panel">
+          <div class="head">
+            <h2>Libro de Jugadas</h2>
+            <span class="muted">Aparición por aparición</span>
+          </div>
+          ${
+            log.length
+              ? `
+            <div class="eventrow headrow">
+              <div>Inn</div>
+              <div>Mitad</div>
+              <div>Bateador</div>
+              <div>Pitcher</div>
+              <div>Resultado</div>
+              <div>Outs</div>
+              <div></div>
+            </div>
+            ${rows}`
+              : empty('BAT LOG vacío', 'Pulsa “+ Registrar PA” para comenzar la anotación.')
+          }
+        </div>
+        <div>
+          <div class="panel">
+            <h2>Visitante — Bateadores</h2>
+            ${renderGamePlayerMini(bsAway)}
+          </div>
+          <div class="panel">
+            <h2>Local — Bateadores</h2>
+            ${renderGamePlayerMini(bsHome)}
+          </div>
+          <div class="panel">
+            <h2>Lanzadores</h2>
+            ${renderPitcherMini(psAway.concat(psHome))}
+          </div>
+        </div>
+      </div>`;
+
+    $$('[data-add-pa]').forEach(b => (b.onclick = () => {
+      if (!checkAdmin()) return;
+      openPAModal(g.id);
+    }));
+    $$('[data-edit-pa]').forEach(b => (b.onclick = () => {
+      if (!checkAdmin()) return;
+      openPAModal(g.id, b.dataset.editPa);
+    }));
+    $$('[data-del-pa]').forEach(b => (b.onclick = () => {
+      if (!checkAdmin()) return;
+      const paid = b.dataset.delPa;
+      requestDoubleDelete(
+        'Aparición al Plato',
+        'Esta jugada se eliminará del BAT LOG y recalculará las estadísticas.',
+        () => deletePA(g.id, paid)
+      );
+    }));
+    $$('[data-open-face]').forEach(b => (b.onclick = () => openFaceoff()));
+  }
+
+  function deletePA(gid, paid) {
+    const g = getGame(gid);
+    if (!g) return;
+    g.batLog = (g.batLog || []).filter(x => x.id !== paid);
+    recalcStats();
+    save();
+    renderScorebook(g);
+  }
+
+  // ----------------------------------------------------
+  // CARA A CARA: BATEADOR VS LANZADOR
+  // ----------------------------------------------------
+  function openFaceoff() {
+    closeModals();
+    $('#faceModal').classList.add('open');
+    const all = db.players.slice().sort((a, b) => a.name.localeCompare(b.name));
+
+    $('#faceBatter').innerHTML = all.length
+      ? all.map(p => `<option value="${p.id}">${esc(p.name)} — ${esc(teamName(p.team))}</option>`).join('')
+      : `<option value="">No hay jugadores</option>`;
+
+    $('#facePitcher').innerHTML = all.length
+      ? all.map(p => `<option value="${p.id}">${esc(p.name)} — ${esc(teamName(p.team))}</option>`).join('')
+      : `<option value="">No hay jugadores</option>`;
+
+    const firstB = all.find(isBatter) || all[0];
+    const firstP = all.find(isPitcher) || all[0];
+    if (firstB) $('#faceBatter').value = firstB.id;
+    if (firstP) $('#facePitcher').value = firstP.id;
+
+    renderFaceoff();
+    $('#faceBatter').onchange = renderFaceoff;
+    $('#facePitcher').onchange = renderFaceoff;
+  }
+
+  function renderFaceoff() {
+    const batter = $('#faceBatter').value;
+    const pitcher = $('#facePitcher').value;
+    const rows = allPAs().filter(pa => pa.batter === batter && pa.pitcher === pitcher);
+    const bs = batterStats(batter, rows);
+    const ps = pitcherStats(pitcher, rows);
+    const bp = db.players.find(p => p.id === batter);
+    const pp = db.players.find(p => p.id === pitcher);
+
+    const outcomes = {};
+    rows.forEach(r => {
+      outcomes[r.result] = (outcomes[r.result] || 0) + 1;
+    });
+
+    const outcomeHTML =
+      Object.entries(outcomes)
+        .sort((a, b) => b[1] - a[1])
+        .map(([r, n]) => `<span class="tag">${esc(resultLabel(r))}: ${n}</span>`)
+        .join('') || '<span class="muted">Sin enfrentamientos registrados todavía.</span>';
+
+    $('#faceArea').innerHTML = `
+      <div class="compare">
+        <div class="playercard">
+          <div class="playerhead">
+            ${bp?.photo ? `<img src="${bp.photo}" alt="">` : ''}
+            <div>
+              <h3><span class="player-link" data-player-id="${bp?.id}">${esc(bp?.name || 'Bateador')}</span></h3>
+              <div class="subtle">${esc(teamName(bp?.team))} • Bateador</div>
+            </div>
+          </div>
+          <div class="metricrow">
+            <div class="metric"><b>${bs.PA}</b><small>PA</small></div>
+            <div class="metric"><b>${bs.AB}</b><small>AB</small></div>
+            <div class="metric"><b>${bs.H}</b><small>H</small></div>
+            <div class="metric"><b style="color:var(--yellow)">${fmtAvg(bs.AVG)}</b><small>AVG</small></div>
+          </div>
+        </div>
+        <div class="playercard">
+          <div class="playerhead">
+            ${pp?.photo ? `<img src="${pp.photo}" alt="">` : ''}
+            <div>
+              <h3><span class="player-link" data-player-id="${pp?.id}">${esc(pp?.name || 'Lanzador')}</span></h3>
+              <div class="subtle">${esc(teamName(pp?.team))} • Lanzador</div>
+            </div>
+          </div>
+          <div class="metricrow">
+            <div class="metric"><b>${ps.SO}</b><small>SO</small></div>
+            <div class="metric"><b>${ps.H}</b><small>H</small></div>
+            <div class="metric"><b>${ps.HR}</b><small>HR</small></div>
+            <div class="metric"><b>${ps.BB}</b><small>BB</small></div>
+          </div>
+        </div>
+      </div>
+      <div class="panel" style="margin-top:14px">
+        <div class="head">
+          <h2>Qué ocurre cuando se enfrentan</h2>
+          <span class="pill">${rows.length} PA</span>
+        </div>
+        <div style="margin-top:10px">${outcomeHTML}</div>
+        <div class="statgrid">
+          <div class="statbox"><small>Ponches</small><b>${bs.SO}</b></div>
+          <div class="statbox"><small>Hits</small><b>${bs.H}</b></div>
+          <div class="statbox"><small>Promedio</small><b style="color:var(--yellow)">${fmtAvg(bs.AVG)}</b></div>
+          <div class="statbox"><small>HR</small><b>${bs.HR}</b></div>
+          <div class="statbox"><small>BB</small><b>${bs.BB}</b></div>
+          <div class="statbox"><small>K%</small><b>${fmtPct(bs.KPct * 100)}</b></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Historial de enfrentamientos directos</h2>
+        ${
+          rows.length
+            ? `
+          <div class="tablewrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Juego</th>
+                  <th>Entrada</th>
+                  <th>Resultado</th>
+                  <th>Picheo</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows
+                  .slice()
+                  .reverse()
+                  .map(
+                    pa => `
+                  <tr>
+                    <td>${esc(pa.game.date || '')}</td>
+                    <td>${esc(teamName(pa.game.away))} vs ${esc(teamName(pa.game.home))}</td>
+                    <td>${pa.inning} ${pa.half === 'away' ? 'VIS' : 'LOC'}</td>
+                    <td>${esc(resultLabel(pa.result))}</td>
+                    <td>${esc(pa.pitchType || '—')}</td>
+                  </tr>`
+                  )
+                  .join('')}
+              </tbody>
+            </table>
+          </div>`
+            : empty('Sin enfrentamientos', 'Registra BAT LOG con estos dos jugadores.')
+        }
+      </div>`;
+  }
+
+  // ----------------------------------------------------
+  // GESTIÓN DE MODALES Y FORMULARIOS
+  // ----------------------------------------------------
   function closeModals() {
     $$('.modal').forEach(m => m.classList.remove('open'));
   }
@@ -373,7 +2376,6 @@
     r.readAsDataURL(file);
   }
 
-  // Select Population
   function populateSelects() {
     const teamOpts = db.teams.length
       ? db.teams.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')
@@ -399,7 +2401,6 @@
     });
   }
 
-  // Modal Preparations
   function preparePlayerModal(pid = null) {
     const f = $('#playerForm');
     f.reset();
@@ -450,9 +2451,8 @@
       }
     }
 
-    const selected = new Set(
-      t?.players || db.players.filter(p => p.team === tid).map(p => p.id)
-    );
+    // REGLA N° 1: Jugadores que realmente pertenecen al equipo (p.team === tid)
+    const selected = new Set(db.players.filter(p => p.team === tid).map(p => p.id));
     $('#teamRoster').innerHTML = db.players.length
       ? db.players
           .map(
@@ -461,7 +2461,9 @@
                 selected.has(p.id) ? 'checked' : ''
               }>${
                 p.photo ? `<img class="avatar" src="${p.photo}" alt="">` : ''
-              }<span>${esc(p.name)} <small class="muted">#${esc(p.number)}</small></span></label>`
+              }<span>${esc(p.name)} <small class="muted">#${esc(p.number)}</small> ${
+                p.team && p.team !== tid ? `<small style="color:var(--yellow)">(${esc(teamName(p.team))})</small>` : ''
+              }</span></label>`
           )
           .join('')
       : empty('No hay jugadores', 'Crea jugadores primero.');
@@ -544,7 +2546,6 @@
         .join('');
   }
 
-  // Playoff Series Calculator
   function updateSeriesFromGames() {
     db.series.forEach(sr => {
       const gs = db.games.filter(g => g.series === sr.id);
@@ -571,483 +2572,16 @@
     });
   }
 
-  function remove(type, key, view) {
-    if (!confirm('¿Estás seguro de que deseas eliminar este registro?')) return;
-    if (type === 'games') {
-      db.games = db.games.filter(x => x.id !== key);
-      updateSeriesFromGames();
-      recalcStats();
-    } else {
-      db[type] = db[type].filter(x => x.id !== key);
-    }
-    save();
-    show(view);
-  }
+  function refreshPAPlayers() {
+    const g = getGame($('#paForm').gameId.value);
+    if (!g) return;
+    const side = $('#paForm [name="half"]').value;
+    const batter = $('#paBatter').value;
+    const pitcher = $('#paPitcher').value;
 
-  // Renderers
-  function renderTeams() {
-    const el = $('#teamsList');
-    if (!db.teams.length) {
-      el.innerHTML = empty('No hay equipos', 'Usa “Crear equipo” para comenzar.');
-      return;
-    }
-    el.innerHTML = `
-      <div class="tablewrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Equipo</th>
-              <th>Ciudad</th>
-              <th>Manager</th>
-              <th>Jugadores</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            ${db.teams
-              .map(
-                t => `
-              <tr>
-                <td>${t.logo ? `<img class="teamlogo" src="${t.logo}" alt="">` : ''}<b>${esc(t.name)}</b></td>
-                <td>${esc(t.city || '—')}</td>
-                <td>${esc(t.manager || '—')}</td>
-                <td>${db.players.filter(p => p.team === t.id).length}</td>
-                <td class="actions">
-                  <button class="btn" data-edit-team="${t.id}">Editar</button>
-                  <button class="btn danger" data-del-team="${t.id}">Eliminar</button>
-                </td>
-              </tr>`
-              )
-              .join('')}
-          </tbody>
-        </table>
-      </div>`;
-
-    $$('[data-del-team]').forEach(b => (b.onclick = () => remove('teams', b.dataset.delTeam, 'teams')));
-    $$('[data-edit-team]').forEach(
-      b =>
-        (b.onclick = () => {
-          openModal('teamModal');
-          prepareTeamModal(b.dataset.editTeam);
-        })
-    );
-  }
-
-  function renderPlayers() {
-    const el = $('#playersList');
-    if (!db.players.length) {
-      el.innerHTML = empty('No hay jugadores', 'Crea los jugadores de tus equipos.');
-      return;
-    }
-    el.innerHTML = `
-      <div class="tablewrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Jugador</th>
-              <th>#</th>
-              <th>Equipo</th>
-              <th>Rol</th>
-              <th>Posición</th>
-              <th>Picheos</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            ${db.players
-              .map(
-                p => `
-              <tr>
-                <td>${p.photo ? `<img class="avatar" src="${p.photo}" alt="">` : ''}<b>${esc(p.name)}</b></td>
-                <td>${esc(p.number || '—')}</td>
-                <td>${esc(teamName(p.team))}</td>
-                <td>${p.role === 'two-way' ? 'Lanzador + bateador' : isPitcher(p) ? 'Lanzador' : 'Bateador'}</td>
-                <td>${esc(p.position || '—')}</td>
-                <td>${isPitcher(p) ? (p.pitchTypes || []).length : '—'}</td>
-                <td class="actions">
-                  <button class="btn" data-edit-player="${p.id}">Editar</button>
-                  <button class="btn danger" data-del-player="${p.id}">Eliminar</button>
-                </td>
-              </tr>`
-              )
-              .join('')}
-          </tbody>
-        </table>
-      </div>`;
-
-    $$('[data-del-player]').forEach(b => (b.onclick = () => remove('players', b.dataset.delPlayer, 'players')));
-    $$('[data-edit-player]').forEach(
-      b =>
-        (b.onclick = () => {
-          openModal('playerModal');
-          preparePlayerModal(b.dataset.editPlayer);
-        })
-    );
-  }
-
-  function gameStatus(g) {
-    return (g.batLog || []).length ? 'BAT LOG completo' : 'BAT LOG pendiente';
-  }
-
-  function gameHTML(g) {
-    const sr = g.series ? getSeries(g.series) : null;
-    const paCount = (g.batLog || []).length;
-    return `
-      <div class="gamecard">
-        <div class="head">
-          <span class="muted">${esc(g.date)} ${esc(g.time)} • ${esc(seasonName(g.season))}</span>
-          <span class="pill">${sr ? `Serie: ${esc(teamName(sr.teamA))} vs ${esc(teamName(sr.teamB))}` : 'Juego de liga'}</span>
-        </div>
-        <div class="teamscore">
-          <b>${esc(teamName(g.away))}</b>
-          <div class="score">${g.awayScore} — ${g.homeScore}</div>
-          <b>${esc(teamName(g.home))}</b>
-        </div>
-        <div class="muted" style="text-align:center;margin-top:8px">
-          Juego ${esc(g.gameNumber || '—')} ${g.stadium ? '• ' + esc(g.stadium) : ''}
-        </div>
-        <div class="head" style="margin-top:12px">
-          <span class="tag">${gameStatus(g)}</span>
-          <span class="muted">${paCount} apariciones al plato</span>
-        </div>
-        <div class="actions" style="margin-top:11px">
-          <button class="btn red" data-score-game="${g.id}">BAT LOG / iSCORE</button>
-          <button class="btn" data-edit-game="${g.id}">Editar</button>
-          <button class="btn danger" data-del-game="${g.id}">Eliminar</button>
-        </div>
-      </div>`;
-  }
-
-  function renderGames() {
-    const el = $('#gamesList');
-    el.innerHTML = db.games.length
-      ? db.games.slice().reverse().map(gameHTML).join('')
-      : empty('No hay juegos', 'Registra el primer partido y asígnalo a una temporada.');
-
-    $$('[data-del-game]').forEach(b => (b.onclick = () => remove('games', b.dataset.delGame, 'games')));
-    $$('[data-edit-game]').forEach(
-      b =>
-        (b.onclick = () => {
-          openModal('gameModal');
-          prepareGameModal(b.dataset.editGame);
-        })
-    );
-    $$('[data-score-game]').forEach(b => (b.onclick = () => openScorebook(b.dataset.scoreGame)));
-  }
-
-  function seasonHTML(s) {
-    const series = db.series.filter(x => x.season === s.id);
-    const body =
-      s.type === 'elimination'
-        ? series.length
-          ? series
-              .map(sr => {
-                const pa = db.games
-                  .filter(g => g.series === sr.id)
-                  .reduce((n, g) => n + (g.batLog || []).length, 0);
-                return `
-                  <div class="series">
-                    <div class="head">
-                      <b>${esc(teamName(sr.teamA))} vs ${esc(teamName(sr.teamB))}</b>
-                      <span class="pill">${esc(sr.status)}</span>
-                    </div>
-                    <div class="muted" style="margin-top:7px">
-                      Mejor de ${sr.bestOf} • ${sr.winsA} — ${sr.winsB} • ${
-                  db.games.filter(g => g.series === sr.id).length
-                } juegos • ${pa} PA registradas
-                    </div>
-                  </div>`;
-              })
-              .join('')
-          : empty('No hay series', 'Pulsa “+ Serie” para crear el enfrentamiento.')
-        : `<div class="muted" style="margin-top:10px">Esta liga tendrá <b>${esc(
-            s.gamesCount || 0
-          )}</b> juegos registrados desde la sección Juegos.</div>`;
-
-    return `
-      <div class="gamecard">
-        <div class="head">
-          <div>
-            <b>${esc(s.name)}</b>
-            <div class="muted">${s.type === 'league' ? 'Liga' : 'Eliminatoria'} • ${esc(s.start || '')} ${
-      s.end ? '→ ' + esc(s.end) : ''
-    }</div>
-          </div>
-          <div class="actions">
-            <span class="tag">${
-              s.type === 'league' ? `${esc(s.gamesCount || 0)} juegos` : `Mejor de ${esc(s.bestOf)}`
-            }</span>
-            <button class="btn" data-edit-season="${s.id}">Editar</button>
-            ${s.type === 'elimination' ? `<button class="btn red" data-new-series="${s.id}">+ Serie</button>` : ''}
-          </div>
-        </div>
-        ${body}
-      </div>`;
-  }
-
-  function renderSeason() {
-    const el = $('#seasonList');
-    el.innerHTML = db.seasons.length
-      ? db.seasons.map(seasonHTML).join('')
-      : empty('No hay temporadas', 'Crea una temporada y elige si será Liga o Eliminatoria.');
-
-    $('#homeSeasonList').innerHTML = db.seasons.length
-      ? db.seasons
-          .slice(0, 4)
-          .map(
-            s => `
-            <div class="gamecard">
-              <b>${esc(s.name)}</b>
-              <div class="muted">${
-                s.type === 'league'
-                  ? 'Liga — ' + esc(s.gamesCount || 0) + ' juegos'
-                  : 'Eliminatoria — mejor de ' + esc(s.bestOf)
-              }</div>
-            </div>`
-          )
-          .join('')
-      : empty('No hay temporadas', 'Crea tu primera competencia.');
-
-    $$('[data-edit-season]').forEach(
-      b =>
-        (b.onclick = () => {
-          openModal('seasonModal');
-          prepareSeasonModal(b.dataset.editSeason);
-        })
-    );
-    $$('[data-new-series]').forEach(
-      b =>
-        (b.onclick = () => {
-          openModal('seriesModal');
-          prepareSeriesModal();
-          setTimeout(() => {
-            $('#seriesSeason').value = b.dataset.newSeries;
-          }, 0);
-        })
-    );
-  }
-
-  function renderStandings() {
-    const el = $('#standingsList');
-    if (!db.teams.length) {
-      el.innerHTML = empty('No hay equipos', 'Las posiciones aparecerán al registrar equipos y juegos.');
-      return;
-    }
-    const rows = db.teams
-      .map(t => {
-        const gs = db.games.filter(g => g.home === t.id || g.away === t.id);
-        let w = 0,
-          l = 0;
-        gs.forEach(g => {
-          const own = g.home === t.id ? g.homeScore : g.awayScore;
-          const opp = g.home === t.id ? g.awayScore : g.homeScore;
-          if (Number(own) > Number(opp)) w++;
-          else if (Number(own) < Number(opp)) l++;
-        });
-        const pct = w + l ? w / (w + l) : 0;
-        return { ...t, w, l, pct };
-      })
-      .sort((a, b) => b.pct - a.pct || b.w - a.w);
-
-    el.innerHTML = `
-      <div class="tablewrap">
-        <table>
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Equipo</th>
-              <th>G</th>
-              <th>P</th>
-              <th>PCT</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows
-              .map(
-                (t, i) => `
-              <tr>
-                <td>${i + 1}</td>
-                <td><b>${esc(t.name)}</b></td>
-                <td>${t.w}</td>
-                <td>${t.l}</td>
-                <td>${t.pct.toFixed(3).replace('0.', '.')}</td>
-              </tr>`
-              )
-              .join('')}
-          </tbody>
-        </table>
-      </div>`;
-  }
-
-  function renderStats() {
-    const el = $('#statsArea');
-    if (!db.players.length) {
-      el.innerHTML = empty('Sin estadísticas', 'Crea jugadores y registra BAT LOG / iSCORE.');
-      return;
-    }
-    const pas = allPAs();
-    const rows = db.players.map(p => ({
-      p,
-      s: batterStats(p.id, pas),
-      ps: pitcherStats(p.id, pas)
-    }));
-
-    el.innerHTML = `
-      <div class="head" style="margin-bottom:12px">
-        <div>
-          <h3 style="margin:0">Bateo y picheo</h3>
-          <div class="muted">El marcador por sí solo no suma estadísticas. Solo cuentan las apariciones del BAT LOG / iSCORE.</div>
-        </div>
-        <button class="btn blue" data-open-face>⚔ Cara a cara</button>
-      </div>
-      <div class="tablewrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Jugador</th>
-              <th>Equipo</th>
-              <th>PA</th>
-              <th>AB</th>
-              <th>R</th>
-              <th>H</th>
-              <th>HR</th>
-              <th>RBI</th>
-              <th>BB</th>
-              <th>SO</th>
-              <th>SB</th>
-              <th>AVG</th>
-              <th>OBP</th>
-              <th>OPS</th>
-              <th>IP</th>
-              <th>H</th>
-              <th>BB</th>
-              <th>SO</th>
-              <th>ERA</th>
-              <th>WHIP</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows
-              .map(
-                ({ p, s, ps }) => `
-              <tr>
-                <td><b>${esc(p.name)}</b></td>
-                <td>${esc(teamName(p.team))}</td>
-                <td>${s.PA}</td>
-                <td>${s.AB}</td>
-                <td>${s.R}</td>
-                <td>${s.H}</td>
-                <td>${s.HR}</td>
-                <td>${s.RBI}</td>
-                <td>${s.BB}</td>
-                <td>${s.SO}</td>
-                <td>${s.SB}</td>
-                <td>${fmtAvg(s.AVG)}</td>
-                <td>${fmtAvg(s.OBP)}</td>
-                <td>${fmtAvg(s.OPS)}</td>
-                <td>${ps.IP}</td>
-                <td>${ps.H}</td>
-                <td>${ps.BB}</td>
-                <td>${ps.SO}</td>
-                <td>${ps.ERA.toFixed(2)}</td>
-                <td>${ps.WHIP.toFixed(2)}</td>
-              </tr>`
-              )
-              .join('')}
-          </tbody>
-        </table>
-      </div>
-      <div style="margin-top:14px" class="actions">
-        <button class="btn blue" data-open-face>Seleccionar bateador vs lanzador</button>
-      </div>`;
-
-    $$('[data-open-face]').forEach(b => (b.onclick = () => openFaceoff()));
-  }
-
-  function renderLeaders() {
-    const el = $('#leadersArea');
-    if (!db.players.length) {
-      el.innerHTML = empty('Sin líderes', 'Registra jugadores y BAT LOG.');
-      return;
-    }
-    const source = allPAs();
-    const hitters = db.players
-      .map(p => ({ p, s: batterStats(p.id, source) }))
-      .filter(x => x.s.PA > 0)
-      .sort((a, b) => b.s.AVG - a.s.AVG)
-      .slice(0, 10);
-
-    el.innerHTML = hitters.length
-      ? '<h3>Bateo — AVG</h3>' +
-        hitters
-          .map(
-            (x, i) => `
-          <div class="gamecard">
-            <div class="head">
-              <div>
-                <b>${i + 1}. ${esc(x.p.name)}</b>
-                <div class="muted">${esc(teamName(x.p.team))}</div>
-              </div>
-              <strong>${fmtAvg(x.s.AVG)}</strong>
-            </div>
-            <div class="muted" style="margin-top:7px">
-              ${x.s.H} H • ${x.s.HR} HR • ${x.s.RBI} RBI • ${x.s.SO} SO
-            </div>
-          </div>`
-          )
-          .join('')
-      : empty('Sin líderes', 'Aún no hay BAT LOG registrados.');
-  }
-
-  function renderHistory() {
-    const el = $('#historyArea');
-    el.innerHTML = db.events.length
-      ? db.events
-          .slice()
-          .reverse()
-          .map(
-            e => `
-          <div class="gamecard">
-            <b>${esc(e.type)}</b>
-            <div class="muted">${esc(e.text)}</div>
-            <small class="muted">${esc(e.date)}</small>
-          </div>`
-          )
-          .join('')
-      : empty('Sin historial', 'Los registros administrativos aparecerán aquí.');
-  }
-
-  function renderHomeGames() {
-    const el = $('#homeGamesList');
-    el.innerHTML = db.games.length
-      ? db.games.slice().reverse().slice(0, 4).map(gameHTML).join('')
-      : empty('No hay juegos', 'Los partidos que registres aparecerán aquí.');
-  }
-
-  function renderAll() {
-    populateSelects();
-    recalcStats();
-    if ($('#homeTeams')) $('#homeTeams').textContent = db.teams.length;
-    if ($('#homePlayers')) $('#homePlayers').textContent = db.players.length;
-    if ($('#homeSeasons')) $('#homeSeasons').textContent = db.seasons.length;
-    if ($('#homeGames')) $('#homeGames').textContent = db.games.length;
-
-    renderTeams();
-    renderPlayers();
-    renderGames();
-    renderSeason();
-    renderStandings();
-    renderStats();
-    renderLeaders();
-    renderHistory();
-    renderHomeGames();
-  }
-
-  // Roster Filter Helpers
-  function teamPlayers(teamId, onlyBatter = false, onlyPitcher = false) {
-    return db.players.filter(
-      p => p.team === teamId && (!onlyBatter || isBatter(p)) && (!onlyPitcher || isPitcher(p))
-    );
+    setOptions($('#paBatter'), teamPlayers(side === 'away' ? g.away : g.home, true), batter);
+    setOptions($('#paPitcher'), teamPlayers(side === 'away' ? g.home : g.away, false, true), pitcher);
+    updatePAPitchTypes(pitcher);
   }
 
   function setOptions(el, items, selected = '') {
@@ -1061,224 +2595,6 @@
           )
           .join('')
       : `<option value="">No disponibles</option>`;
-  }
-
-  // BAT LOG / iSCORE
-  function resultLabel(r) {
-    return RESULT_OPTIONS.find(x => x[0] === r)?.[1] || r;
-  }
-
-  function batterStatsForGame(g, teamId) {
-    return db.players
-      .filter(p => p.team === teamId)
-      .map(p => ({
-        p,
-        s: batterStats(
-          p.id,
-          (g.batLog || []).map(x => ({ ...x, gameId: g.id }))
-        )
-      }))
-      .filter(x => x.s.PA > 0);
-  }
-
-  function pitcherStatsForGame(g, teamId) {
-    return db.players
-      .filter(p => p.team === teamId && isPitcher(p))
-      .map(p => ({
-        p,
-        s: pitcherStats(
-          p.id,
-          (g.batLog || []).map(x => ({ ...x, gameId: g.id }))
-        )
-      }))
-      .filter(x => x.s.BF > 0);
-  }
-
-  function renderGamePlayerMini(rows) {
-    return rows.length
-      ? rows
-          .map(
-            x => `
-        <div class="playercard">
-          <div class="head">
-            <div>
-              <b>${esc(x.p.name)}</b>
-              <div class="subtle">PA ${x.s.PA} • AB ${x.s.AB}</div>
-            </div>
-            <strong>${fmtAvg(x.s.AVG)}</strong>
-          </div>
-          <div class="metricrow">
-            <div class="metric"><b>${x.s.H}</b><small>H</small></div>
-            <div class="metric"><b>${x.s.HR}</b><small>HR</small></div>
-            <div class="metric"><b>${x.s.RBI}</b><small>RBI</small></div>
-            <div class="metric"><b>${x.s.SO}</b><small>SO</small></div>
-          </div>
-        </div>`
-          )
-          .join('')
-      : empty('Sin apariciones', 'Todavía no hay bateadores registrados.');
-  }
-
-  function renderPitcherMini(rows) {
-    return rows.length
-      ? rows
-          .map(
-            x => `
-        <div class="playercard">
-          <div class="head">
-            <div>
-              <b>${esc(x.p.name)}</b>
-              <div class="subtle">BF ${x.s.BF}</div>
-            </div>
-            <strong>ERA ${x.s.ERA.toFixed(2)}</strong>
-          </div>
-          <div class="metricrow">
-            <div class="metric"><b>${x.s.IP}</b><small>IP</small></div>
-            <div class="metric"><b>${x.s.SO}</b><small>SO</small></div>
-            <div class="metric"><b>${x.s.H}</b><small>H</small></div>
-            <div class="metric"><b>${x.s.WHIP.toFixed(2)}</b><small>WHIP</small></div>
-          </div>
-        </div>`
-          )
-          .join('')
-      : empty('Sin pitchers', 'No hay apariciones con pitchers registrados.');
-  }
-
-  function openScorebook(gid) {
-    const g = getGame(gid);
-    if (!g) return;
-    $('#scoreModal').classList.add('open');
-    renderScorebook(g);
-  }
-
-  function renderScorebook(g) {
-    const log = g.batLog || [];
-    const rows = log
-      .map(
-        pa => `
-      <div class="eventrow">
-        <div>${esc(pa.inning)}</div>
-        <div>${pa.half === 'away' ? 'VIS' : 'LOC'}</div>
-        <div>
-          <b>${esc(playerName(pa.batter))}</b>
-          <div class="subtle">${esc(teamName(pa.half === 'away' ? g.away : g.home))}</div>
-        </div>
-        <div><b>${esc(playerName(pa.pitcher))}</b></div>
-        <div>
-          <span class="resultPill">${esc(resultLabel(pa.result))}</span>${
-          pa.pitchType ? ` <span class="tag">${esc(pa.pitchType)}</span>` : ''
-        }
-        </div>
-        <div>${Number(pa.outs) || 0} out</div>
-        <div class="actions">
-          <button class="btn" data-edit-pa="${pa.id}">Editar</button>
-          <button class="btn danger" data-del-pa="${pa.id}">×</button>
-        </div>
-      </div>`
-      )
-      .join('');
-
-    const bsAway = batterStatsForGame(g, g.away);
-    const bsHome = batterStatsForGame(g, g.home);
-    const psAway = pitcherStatsForGame(g, g.away);
-    const psHome = pitcherStatsForGame(g, g.home);
-
-    const awayHits = bsAway.reduce((acc, row) => acc + row.s.H, 0);
-    const homeHits = bsHome.reduce((acc, row) => acc + row.s.H, 0);
-
-    $('#scorebookArea').innerHTML = `
-      <div class="head">
-        <div>
-          <div class="eyebrow">BAT LOG / iSCORE</div>
-          <h2 style="margin:0">${esc(teamName(g.away))} ${g.awayScore} — ${g.homeScore} ${esc(
-      teamName(g.home)
-    )}</h2>
-          <div class="muted">${esc(seasonName(g.season))} • Juego ${esc(g.gameNumber || '—')} • ${esc(
-      g.date
-    )}</div>
-        </div>
-        <div class="actions">
-          <button class="btn red" data-add-pa="${g.id}">+ Registrar PA</button>
-          <button class="btn blue" data-open-face>⚔ Cara a cara</button>
-          <button class="btn" data-close-score>Volver a juegos</button>
-        </div>
-      </div>
-      <div class="notice good" style="margin-top:14px">
-        ${
-          log.length
-            ? `Este juego ya tiene ${log.length} apariciones registradas; esas apariciones alimentan las estadísticas.`
-            : 'Este juego todavía no tiene BAT LOG. El resultado <b>no</b> modifica las estadísticas hasta que registres las apariciones.'
-        }
-      </div>
-      <div class="statgrid">
-        <div class="statbox"><small>PA registradas</small><b>${log.length}</b></div>
-        <div class="statbox"><small>Hits visitante</small><b>${awayHits}</b></div>
-        <div class="statbox"><small>Hits local</small><b>${homeHits}</b></div>
-        <div class="statbox"><small>SO pitchers visitante</small><b>${psAway.reduce(
-          (n, x) => n + x.s.SO,
-          0
-        )}</b></div>
-        <div class="statbox"><small>SO pitchers local</small><b>${psHome.reduce(
-          (n, x) => n + x.s.SO,
-          0
-        )}</b></div>
-        <div class="statbox"><small>Registros completos</small><b>${log.length ? 'Sí' : 'No'}</b></div>
-      </div>
-      <div class="scorebook">
-        <div class="panel">
-          <div class="head">
-            <h2>Libro de apariciones</h2>
-            <span class="muted">Cada PA une bateador + pitcher</span>
-          </div>
-          ${
-            log.length
-              ? `
-            <div class="eventrow headrow">
-              <div>Inn</div>
-              <div>Mitad</div>
-              <div>Bateador</div>
-              <div>Pitcher</div>
-              <div>Resultado</div>
-              <div>Outs</div>
-              <div></div>
-            </div>
-            ${rows}`
-              : empty('BAT LOG vacío', 'Pulsa “+ Registrar PA” para comenzar el juego.')
-          }
-        </div>
-        <div>
-          <div class="panel">
-            <h2>Visitante — bateadores</h2>
-            ${renderGamePlayerMini(bsAway)}
-          </div>
-          <div class="panel">
-            <h2>Local — bateadores</h2>
-            ${renderGamePlayerMini(bsHome)}
-          </div>
-          <div class="panel">
-            <h2>Pitchers</h2>
-            ${renderPitcherMini(psAway.concat(psHome))}
-          </div>
-        </div>
-      </div>`;
-
-    $$('[data-add-pa]').forEach(b => (b.onclick = () => openPAModal(g.id)));
-    $$('[data-edit-pa]').forEach(b => (b.onclick = () => openPAModal(g.id, b.dataset.editPa)));
-    $$('[data-del-pa]').forEach(b => (b.onclick = () => deletePA(g.id, b.dataset.delPa)));
-    $$('[data-close-score]').forEach(b => (b.onclick = () => closeModals()));
-    $$('[data-open-face]').forEach(b => (b.onclick = () => openFaceoff()));
-  }
-
-  function refreshPAPlayers() {
-    const g = getGame($('#paForm').gameId.value);
-    if (!g) return;
-    const side = $('#paForm [name="half"]').value;
-    const batter = $('#paBatter').value;
-    const pitcher = $('#paPitcher').value;
-
-    setOptions($('#paBatter'), teamPlayers(side === 'away' ? g.away : g.home, true), batter);
-    setOptions($('#paPitcher'), teamPlayers(side === 'away' ? g.home : g.away, false, true), pitcher);
-    updatePAPitchTypes(pitcher);
   }
 
   function openPAModal(gid, paid = null) {
@@ -1323,160 +2639,21 @@
       list.map(x => `<option value="${esc(x)}" ${x === selected ? 'selected' : ''}>${esc(x)}</option>`).join('');
   }
 
-  function deletePA(gid, paid) {
-    const g = getGame(gid);
-    if (!g) return;
-    if (confirm('¿Eliminar esta aparición al plato?')) {
-      g.batLog = (g.batLog || []).filter(x => x.id !== paid);
-      recalcStats();
-      $('#scoreModal').classList.add('open');
-      renderScorebook(g);
-      save();
-    }
-  }
-
-  // Batter vs Pitcher Face-off
-  function openFaceoff() {
-    closeModals();
-    $('#faceModal').classList.add('open');
-    const all = db.players.slice().sort((a, b) => a.name.localeCompare(b.name));
-
-    $('#faceBatter').innerHTML = all.length
-      ? all.map(p => `<option value="${p.id}">${esc(p.name)} — ${esc(teamName(p.team))}</option>`).join('')
-      : `<option value="">No hay jugadores</option>`;
-
-    $('#facePitcher').innerHTML = all.length
-      ? all.map(p => `<option value="${p.id}">${esc(p.name)} — ${esc(teamName(p.team))}</option>`).join('')
-      : `<option value="">No hay jugadores</option>`;
-
-    const firstB = all.find(isBatter) || all[0];
-    const firstP = all.find(isPitcher) || all[0];
-    if (firstB) $('#faceBatter').value = firstB.id;
-    if (firstP) $('#facePitcher').value = firstP.id;
-
-    renderFaceoff();
-    $('#faceBatter').onchange = renderFaceoff;
-    $('#facePitcher').onchange = renderFaceoff;
-  }
-
-  function renderFaceoff() {
-    const batter = $('#faceBatter').value;
-    const pitcher = $('#facePitcher').value;
-    const rows = allPAs().filter(pa => pa.batter === batter && pa.pitcher === pitcher);
-    const bs = batterStats(batter, rows);
-    const ps = pitcherStats(pitcher, rows);
-    const bp = db.players.find(p => p.id === batter);
-    const pp = db.players.find(p => p.id === pitcher);
-
-    const outcomes = {};
-    rows.forEach(r => {
-      outcomes[r.result] = (outcomes[r.result] || 0) + 1;
-    });
-
-    const outcomeHTML =
-      Object.entries(outcomes)
-        .sort((a, b) => b[1] - a[1])
-        .map(([r, n]) => `<span class="tag">${esc(resultLabel(r))}: ${n}</span>`)
-        .join('') || '<span class="muted">Sin enfrentamientos registrados todavía.</span>';
-
-    $('#faceArea').innerHTML = `
-      <div class="compare">
-        <div class="playercard">
-          <div class="playerhead">
-            ${bp?.photo ? `<img src="${bp.photo}" alt="">` : ''}
-            <div>
-              <h3>${esc(bp?.name || 'Bateador')}</h3>
-              <div class="subtle">${esc(teamName(bp?.team))} • Bateador</div>
-            </div>
-          </div>
-          <div class="metricrow">
-            <div class="metric"><b>${bs.PA}</b><small>PA</small></div>
-            <div class="metric"><b>${bs.AB}</b><small>AB</small></div>
-            <div class="metric"><b>${bs.H}</b><small>H</small></div>
-            <div class="metric"><b>${fmtAvg(bs.AVG)}</b><small>AVG</small></div>
-          </div>
-        </div>
-        <div class="playercard">
-          <div class="playerhead">
-            ${pp?.photo ? `<img src="${pp.photo}" alt="">` : ''}
-            <div>
-              <h3>${esc(pp?.name || 'Lanzador')}</h3>
-              <div class="subtle">${esc(teamName(pp?.team))} • Lanzador</div>
-            </div>
-          </div>
-          <div class="metricrow">
-            <div class="metric"><b>${ps.SO}</b><small>SO</small></div>
-            <div class="metric"><b>${ps.H}</b><small>H</small></div>
-            <div class="metric"><b>${ps.HR}</b><small>HR</small></div>
-            <div class="metric"><b>${ps.BB}</b><small>BB</small></div>
-          </div>
-        </div>
-      </div>
-      <div class="panel" style="margin-top:14px">
-        <div class="head">
-          <h2>Qué ocurre cuando se enfrentan</h2>
-          <span class="pill">${rows.length} PA</span>
-        </div>
-        <div style="margin-top:10px">${outcomeHTML}</div>
-        <div class="statgrid">
-          <div class="statbox"><small>Ponches al bateador</small><b>${bs.SO}</b></div>
-          <div class="statbox"><small>Hits</small><b>${bs.H}</b></div>
-          <div class="statbox"><small>Promedio</small><b>${fmtAvg(bs.AVG)}</b></div>
-          <div class="statbox"><small>HR</small><b>${bs.HR}</b></div>
-          <div class="statbox"><small>BB</small><b>${bs.BB}</b></div>
-          <div class="statbox"><small>K%</small><b>${fmtPct(bs.KPct * 100)}</b></div>
-        </div>
-      </div>
-      <div class="panel">
-        <h2>Historial de enfrentamientos</h2>
-        ${
-          rows.length
-            ? `
-          <div class="tablewrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Fecha</th>
-                  <th>Juego</th>
-                  <th>Entrada</th>
-                  <th>Resultado</th>
-                  <th>Picheo</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${rows
-                  .slice()
-                  .reverse()
-                  .map(
-                    pa => `
-                  <tr>
-                    <td>${esc(pa.game.date || '')}</td>
-                    <td>${esc(teamName(pa.game.away))} vs ${esc(teamName(pa.game.home))}</td>
-                    <td>${pa.inning} ${pa.half === 'away' ? 'VIS' : 'LOC'}</td>
-                    <td>${esc(resultLabel(pa.result))}</td>
-                    <td>${esc(pa.pitchType || '—')}</td>
-                  </tr>`
-                  )
-                  .join('')}
-              </tbody>
-            </table>
-          </div>`
-            : empty(
-                'Sin enfrentamientos',
-                'Registra BAT LOG con estos dos jugadores para crear su historial cara a cara.'
-              )
-        }
-      </div>`;
-  }
-
-  // Event Listeners Initialization
+  // ----------------------------------------------------
+  // EVENTOS E INICIALIZACIÓN
+  // ----------------------------------------------------
   function initEvents() {
-    // Nav view switcher
+    // Navegación por vistas
     $$('nav button').forEach(b => b.addEventListener('click', () => show(b.dataset.view)));
     $$('[data-go]').forEach(b => b.addEventListener('click', () => show(b.dataset.go)));
 
-    // Modal openers & closers
-    $$('[data-modal]').forEach(b => b.addEventListener('click', () => openModal(b.dataset.modal)));
+    // Modales generales
+    $$('[data-modal]').forEach(b =>
+      b.addEventListener('click', () => {
+        if (!checkAdmin()) return;
+        openModal(b.dataset.modal);
+      })
+    );
     $$('.close').forEach(b => b.addEventListener('click', closeModals));
     $$('.modal').forEach(m =>
       m.addEventListener('click', e => {
@@ -1484,7 +2661,54 @@
       })
     );
 
-    // Form select dependencies
+    // Botón de rol en la barra superior
+    $('#adminRoleBtn').addEventListener('click', () => {
+      if (isAdmin) {
+        if (confirm('¿Deseas salir del Modo Administrador y volver a Modo Espectador?')) {
+          isAdmin = false;
+          sessionStorage.removeItem('rosmil_is_admin');
+          updateRoleUI();
+          renderAll();
+        }
+      } else {
+        openModal('adminLoginModal');
+      }
+    });
+
+    // Formulario de login de Administrador
+    $('#adminLoginForm').addEventListener('submit', e => {
+      e.preventDefault();
+      const pin = $('#adminPinInput').value;
+      const expected = db.settings?.adminPin || 'admin123';
+      if (pin === expected) {
+        isAdmin = true;
+        sessionStorage.setItem('rosmil_is_admin', 'true');
+        $('#adminLoginError').style.display = 'none';
+        closeModals();
+        updateRoleUI();
+        renderAll();
+        alert('✅ Acceso concedido: Modo Administrador activado.');
+      } else {
+        $('#adminLoginError').style.display = 'block';
+      }
+    });
+
+    // Pasos de Doble Confirmación (Regla N° 6)
+    $('#confirmProceed1').addEventListener('click', () => {
+      $('#confirmStep1').style.display = 'none';
+      $('#confirmStep2').style.display = 'block';
+    });
+
+    $('#confirmFinalDelete').addEventListener('click', () => {
+      closeModals();
+      if (typeof pendingDeleteAction === 'function') {
+        const action = pendingDeleteAction;
+        pendingDeleteAction = null;
+        action();
+      }
+    });
+
+    // SELECTS dependientes
     if ($('#seasonType')) $('#seasonType').addEventListener('change', toggleSeasonFields);
     if ($('#gameSeason')) $('#gameSeason').addEventListener('change', () => updateGameSeries(''));
     if ($('#paPitcher')) $('#paPitcher').addEventListener('change', () => updatePAPitchTypes(''));
@@ -1503,9 +2727,11 @@
       });
     }
 
-    // Team Form Submit
+    // SUBMIT: TEAM FORM (REGLAS N° 1 Y 18: HISTORIAL Y ROSTER REAL)
     $('#teamForm').addEventListener('submit', e => {
       e.preventDefault();
+      if (!checkAdmin()) return;
+
       const f = new FormData(e.target);
       const tid = f.get('id') || id();
       let t = db.teams.find(x => x.id === tid);
@@ -1523,10 +2749,30 @@
           logo: logo !== null ? logo : t.logo || '',
           players: roster
         });
+
+        // REGLA N° 1 y 18: Sincronizar pertenecia y registrar historial de cambios
         db.players.forEach(p => {
-          if (roster.includes(p.id)) p.team = tid;
-          else if (p.team === tid) p.team = '';
+          if (roster.includes(p.id)) {
+            if (p.team && p.team !== tid) {
+              p.teamHistory.push({
+                teamId: p.team,
+                teamName: teamName(p.team),
+                date: new Date().toLocaleDateString(),
+                note: `Transferido a ${t.name}`
+              });
+            }
+            p.team = tid;
+          } else if (p.team === tid) {
+            p.teamHistory.push({
+              teamId: tid,
+              teamName: t.name,
+              date: new Date().toLocaleDateString(),
+              note: 'Baja del equipo'
+            });
+            p.team = '';
+          }
         });
+
         closeModals();
         save();
         show('teams');
@@ -1534,23 +2780,37 @@
       readImage(f.get('logoFile'), finish);
     });
 
-    // Player Form Submit
+    // SUBMIT: PLAYER FORM (REGLAS N° 10, 11 Y 18: EQUIPO ACTUAL Y TRASPASO)
     $('#playerForm').addEventListener('submit', e => {
       e.preventDefault();
+      if (!checkAdmin()) return;
+
       const f = new FormData(e.target);
       const pid = f.get('id') || id();
       let p = db.players.find(x => x.id === pid);
       const role = f.get('role');
+      const newTeam = f.get('team');
 
       const finish = photo => {
         if (!p) {
-          p = { id: pid };
+          p = { id: pid, teamHistory: [] };
           db.players.push(p);
         }
+
+        // Si cambió de equipo, registrar en el historial
+        if (p.team && p.team !== newTeam) {
+          p.teamHistory.push({
+            teamId: p.team,
+            teamName: teamName(p.team),
+            date: new Date().toLocaleDateString(),
+            note: 'Cambio de franquicia'
+          });
+        }
+
         Object.assign(p, {
           name: f.get('name'),
           number: f.get('number'),
-          team: f.get('team'),
+          team: newTeam,
           role,
           position: f.get('position'),
           bats: f.get('bats'),
@@ -1563,6 +2823,7 @@
           pitchTypes: [...e.target.querySelectorAll('[name="pitchType"]:checked')].map(x => x.value),
           photo: photo !== null ? photo : p.photo || ''
         });
+
         closeModals();
         recalcStats();
         save();
@@ -1571,9 +2832,11 @@
       readImage(f.get('photoFile'), finish);
     });
 
-    // Season Form Submit
+    // SUBMIT: SEASON FORM
     $('#seasonForm').addEventListener('submit', e => {
       e.preventDefault();
+      if (!checkAdmin()) return;
+
       const f = new FormData(e.target);
       const sid = f.get('id') || id();
       let s = db.seasons.find(x => x.id === sid);
@@ -1595,9 +2858,11 @@
       show('season');
     });
 
-    // Series Form Submit
+    // SUBMIT: SERIES FORM
     $('#seriesForm').addEventListener('submit', e => {
       e.preventDefault();
+      if (!checkAdmin()) return;
+
       const f = new FormData(e.target);
       const sid = f.get('season');
       const a = f.get('teamA');
@@ -1639,9 +2904,11 @@
       show('season');
     });
 
-    // Game Form Submit
+    // SUBMIT: GAME FORM
     $('#gameForm').addEventListener('submit', e => {
       e.preventDefault();
+      if (!checkAdmin()) return;
+
       const f = new FormData(e.target);
       const gid = f.get('id') || id();
       const season = f.get('season');
@@ -1698,9 +2965,11 @@
       show('games');
     });
 
-    // PA Form Submit
+    // SUBMIT: PA FORM
     $('#paForm').addEventListener('submit', e => {
       e.preventDefault();
+      if (!checkAdmin()) return;
+
       const f = new FormData(e.target);
       const g = getGame(f.get('gameId'));
       if (!g) return;
@@ -1753,61 +3022,29 @@
       save();
     });
 
-    // Clear Data Button in Admin View
-    const clearBtn = $('#clearData');
-    if (clearBtn) {
-      clearBtn.addEventListener('click', () => {
-        const confirmed = confirm(
-          '¿Estás seguro de que deseas borrar TODOS los datos de la liga? Esta acción no se puede deshacer.'
-        );
-        if (confirmed) {
-          localStorage.removeItem(KEY);
-          db = { teams: [], players: [], games: [], seasons: [], series: [], events: [] };
-          if (typeof firebaseInitialized !== 'undefined' && firebaseInitialized && firestoreDb) {
-            firestoreDb.collection('leagues').doc('main').set(db);
-          }
-          recalcStats();
-          renderAll();
-          alert('Todos los datos han sido borrados con éxito.');
-          show('home');
-        }
-      });
-    }
-  }
-
-  // Legacy Migration
-  try {
-    if (!localStorage.getItem(KEY)) {
-      const oldRaw =
-        localStorage.getItem('rosmilLeagueDataV3') || localStorage.getItem('rosmilLeagueDataV2');
-      if (oldRaw) {
-        const o = JSON.parse(oldRaw);
-        db.teams = o.teams || [];
-        db.players = o.players || [];
-        db.games = o.games || [];
-        db.seasons = o.seasons || [];
-        db.series = o.series || [];
-        db.events = o.events || [];
-        db.games.forEach(g => (g.batLog = Array.isArray(g.batLog) ? g.batLog : []));
-        db.teams.forEach(t => {
-          t.players = t.players || db.players.filter(p => p.team === t.id).map(p => p.id);
-        });
-        db.players.forEach(p => {
-          p.role =
-            p.role ||
-            (p.isPitcher && p.isBatter ? 'two-way' : p.isPitcher ? 'pitcher' : 'batter');
-          p.isPitcher = !!p.isPitcher;
-          p.isBatter = p.isBatter !== false;
-          p.pitchTypes = p.pitchTypes || [];
-        });
-        localStorage.setItem(KEY, JSON.stringify(db));
+    // NAVEGACIÓN GLOBAL POR CLICKS (REGLAS 13 Y 14)
+    document.addEventListener('click', e => {
+      const pTarget = e.target.closest('[data-player-id]');
+      if (pTarget) {
+        e.preventDefault();
+        e.stopPropagation();
+        openPlayerProfile(pTarget.dataset.playerId);
+        return;
       }
-    }
-  } catch (e) {
-    console.error('Error durante la migración de datos heredados:', e);
+
+      const tTarget = e.target.closest('[data-team-id]');
+      if (tTarget) {
+        e.preventDefault();
+        e.stopPropagation();
+        openTeamProfile(tTarget.dataset.teamId);
+        return;
+      }
+    });
   }
 
-  // Real-time Cloud Synchronization
+  // ----------------------------------------------------
+  // SINCRONIZACIÓN EN TIEMPO REAL CON FIREBASE
+  // ----------------------------------------------------
   function initFirebaseSync() {
     if (typeof firebaseInitialized !== 'undefined' && firebaseInitialized && firestoreDb) {
       updateStorageStatus('🔄 Conectando a Firebase...');
@@ -1825,10 +3062,14 @@
                   games: Array.isArray(cloudData.games) ? cloudData.games : [],
                   seasons: Array.isArray(cloudData.seasons) ? cloudData.seasons : [],
                   series: Array.isArray(cloudData.series) ? cloudData.series : [],
-                  events: Array.isArray(cloudData.events) ? cloudData.events : []
+                  events: Array.isArray(cloudData.events) ? cloudData.events : [],
+                  settings: cloudData.settings || db.settings || { adminPin: 'admin123', leagueName: 'ROSMIL LEAGUE' }
                 };
                 db.games.forEach(g => {
                   if (!Array.isArray(g.batLog)) g.batLog = [];
+                });
+                db.players.forEach(p => {
+                  if (!Array.isArray(p.teamHistory)) p.teamHistory = [];
                 });
                 try {
                   localStorage.setItem(KEY, JSON.stringify(db));
