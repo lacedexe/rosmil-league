@@ -1914,7 +1914,11 @@
     if ($('#wizGameName')) {
       $('#wizGameName').value = `${teamName(wizardState.awayTeam)} vs ${teamName(wizardState.homeTeam)}`;
     }
-    if ($('#wizOutsPerInning')) $('#wizOutsPerInning').value = 3;
+    if ($('#wizOutsPerInning')) $('#wizOutsPerInning').value = wizardState.outsPerInning;
+    if ($('#wizCustomInnings')) $('#wizCustomInnings').value = '';
+    $$('.btn-inning-opt').forEach(b => {
+      b.classList.toggle('active', Number(b.dataset.innings) === wizardState.innings);
+    });
 
     populateWizardSelects();
     setWizardStep(1);
@@ -2109,8 +2113,8 @@
       stadium: wizardState.stadium || '',
       home: wizardState.homeTeam,
       away: wizardState.awayTeam,
-      innings: Number(wizardState.innings) || 7,
-      outsPerInning: Number(wizardState.outsPerInning) || 3,
+      innings: Math.max(1, Number(wizardState.innings) || 7),
+      outsPerInning: Math.max(1, Number(wizardState.outsPerInning) || 3),
       homeScore: 0,
       awayScore: 0,
       homePositions: wizardState.homePositions,
@@ -2465,6 +2469,11 @@
     const defaultPitcherAway =
       g.awayPositions?.P || teamPlayers(g.away, false, true)[0]?.id || awayLineup[0] || null;
 
+    const maxOuts = Math.max(1, Number(g.outsPerInning) || 3);
+    const maxInnings = Math.max(1, Number(g.innings) || 7);
+    g.outsPerInning = maxOuts;
+    g.innings = maxInnings;
+
     let currentInning = 1;
     let currentHalf = 'away';
     let outsCount = 0;
@@ -2485,14 +2494,16 @@
       }
       if (Number(pa.outs) > 0) {
         outsCount += Number(pa.outs);
-        if (outsCount >= (g.outsPerInning || 3)) {
+        if (outsCount >= maxOuts) {
           outsCount = 0;
           reconstructedRunners = { '1B': null, '2B': null, '3B': null };
           if (currentHalf === 'away') {
             currentHalf = 'home';
           } else {
             currentHalf = 'away';
-            currentInning++;
+            if (currentInning < maxInnings) {
+              currentInning++;
+            }
           }
         }
       }
@@ -2503,8 +2514,13 @@
       }
     });
 
+    if (currentInning > maxInnings) {
+      currentInning = maxInnings;
+    }
+
+    const isAlreadyFinal = g.status === 'FINAL' || g.status === 'Finalizado';
     liveGameState = {
-      active: true,
+      active: !isAlreadyFinal,
       gameId: g.id,
       game: g,
       inning: currentInning,
@@ -2523,7 +2539,11 @@
       redoStack: []
     };
 
-    localStorage.setItem('rosmil_active_game_id', g.id);
+    if (isAlreadyFinal) {
+      localStorage.removeItem('rosmil_active_game_id');
+    } else {
+      localStorage.setItem('rosmil_active_game_id', g.id);
+    }
 
     closeModals();
     $('#liveGameModal').classList.add('open');
@@ -2534,6 +2554,31 @@
   function renderLiveGameUI() {
     const g = liveGameState.game;
     if (!g) return;
+
+    const maxInnings = Math.max(1, Number(g.innings) || 7);
+    const maxOuts = Math.max(1, Number(g.outsPerInning) || 3);
+
+    // Si el juego ya está finalizado, mostrar panel final y detener interacción
+    if (g.status === 'FINAL' || g.status === 'Finalizado' || !liveGameState.active) {
+      $('#liveAwayName').textContent = teamName(g.away);
+      $('#liveHomeName').textContent = teamName(g.home);
+      $('#liveAwayScore').textContent = g.awayScore;
+      $('#liveHomeScore').textContent = g.homeScore;
+      if ($('#liveInningText')) {
+        $('#liveInningText').textContent = `FINAL (${maxInnings} ENTRADAS)`;
+      }
+      $('#livePlayBox').style.display = 'none';
+      $('#liveInningEndPanel').style.display = 'none';
+      $('#liveGameOverPanel').style.display = 'block';
+
+      const winnerId = g.homeScore > g.awayScore ? g.home : g.awayScore > g.homeScore ? g.away : null;
+      const loserId = winnerId === g.home ? g.away : winnerId === g.away ? g.home : null;
+      $('#liveGameOverScore').textContent = `${teamName(g.away)} ${g.awayScore} — ${g.homeScore} ${teamName(g.home)}`;
+      $('#liveWinnerLoserBadge').innerHTML = winnerId
+        ? `<b>GANADOR:</b> <span style="color:var(--yellow)">${esc(teamName(winnerId))}</span> • <b>PERDEDOR:</b> ${esc(teamName(loserId))}`
+        : '<b>RESULTADO:</b> EMPATE';
+      return;
+    }
 
     const isAwayBatting = liveGameState.half === 'away';
     const battingTeamId = isAwayBatting ? g.away : g.home;
@@ -2588,12 +2633,24 @@
     $('#liveAwayTag').textContent = isAwayBatting ? 'AL BATE' : 'DEFENSIVA';
     $('#liveHomeTag').textContent = !isAwayBatting ? 'AL BATE' : 'DEFENSIVA';
 
-    // Entrada y Luces de Outs
-    $('#liveInningText').textContent = `ENTRADA ${liveGameState.inning} (${isAwayBatting ? 'ALTA' : 'BAJA'})`;
+    // Entrada y Luces de Outs Dinámicas según Configuración del Juego
+    $('#liveInningText').textContent = `ENTRADA ${liveGameState.inning} de ${maxInnings} (${isAwayBatting ? 'ALTA' : 'BAJA'})`;
 
-    $('#outDot1').classList.toggle('active', liveGameState.outs >= 1);
-    $('#outDot2').classList.toggle('active', liveGameState.outs >= 2);
-    $('#outDot3').classList.toggle('active', liveGameState.outs >= 3);
+    if ($('#liveOutsLabel')) {
+      $('#liveOutsLabel').textContent = `OUTS (${liveGameState.outs}/${maxOuts}):`;
+    }
+    const dotsContainer = $('#liveOutDotsContainer');
+    if (dotsContainer) {
+      dotsContainer.innerHTML = Array.from({ length: maxOuts }, (_, i) => {
+        const dotNum = i + 1;
+        const isActive = liveGameState.outs >= dotNum;
+        return `<span class="out-dot ${isActive ? 'active' : ''}" id="outDot${dotNum}" title="Out ${dotNum}"></span>`;
+      }).join('');
+    } else {
+      if ($('#outDot1')) $('#outDot1').classList.toggle('active', liveGameState.outs >= 1);
+      if ($('#outDot2')) $('#outDot2').classList.toggle('active', liveGameState.outs >= 2);
+      if ($('#outDot3')) $('#outDot3').classList.toggle('active', liveGameState.outs >= 3);
+    }
 
     // Bateador Activo e Interactivo (Requisito 11)
     $('#liveBatterName').textContent = batter?.name || 'Bateador';
@@ -2758,9 +2815,17 @@
       return;
     }
 
+    const maxInnings = Math.max(1, Number(g.innings) || 7);
+    const maxOuts = Math.max(1, Number(g.outsPerInning) || 3);
+    g.innings = maxInnings;
+    g.outsPerInning = maxOuts;
+
     const result = liveGameState.selectedPlayResult || 'Single';
     const explicitRbi = Number(liveGameState.selectedRbi) || 0;
-    const isOut = result.includes('out') || result.includes('Strikeout');
+    const isOut = result.includes('out') ||
+                  result.includes('Strikeout') ||
+                  result.includes('Sac') ||
+                  result === 'Fielder Choice';
     const isHR = result === 'Home Run';
     const outsInPlay = isOut ? 1 : 0;
 
@@ -2788,7 +2853,8 @@
       homeBattingIndex: liveGameState.homeBattingIndex,
       runners: { ...liveGameState.runners },
       activePitcherAway: liveGameState.activePitcherAway,
-      activePitcherHome: liveGameState.activePitcherHome
+      activePitcherHome: liveGameState.activePitcherHome,
+      status: g.status
     });
     liveGameState.redoStack = [];
 
@@ -2812,6 +2878,9 @@
     g.batLog = Array.isArray(g.batLog) ? g.batLog : [];
     g.batLog.push(pa);
 
+    const isBottom = liveGameState.half === 'home';
+    const isFinalInning = liveGameState.inning >= maxInnings;
+
     // Actualizar carreras
     if (runsScored > 0) {
       if (isAwayBatting) {
@@ -2823,9 +2892,20 @@
       }
     }
 
+    // Regla de walk-off: Si en la baja de la última entrada (o posterior) el equipo local supera al visitante, el juego termina inmediatamente
+    if (isFinalInning && isBottom && liveGameState.homeScore > liveGameState.awayScore) {
+      triggerStadiumAnimation('live', result, rbi, isHR);
+      liveGameState.selectedRbi = 0;
+      recalcStats();
+      save();
+      updateActiveGameBanner();
+      finishLiveGame(false);
+      return;
+    }
+
     // Actualizar outs
     if (isOut) {
-      liveGameState.outs += 1;
+      liveGameState.outs += outsInPlay;
     }
 
     // Actualizar corredores
@@ -2850,23 +2930,21 @@
     save();
     updateActiveGameBanner();
 
-    // CAMBIO AUTOMÁTICO DE INNING AL COMPLETAR EL ÚLTIMO OUT (Requisito 3)
-    const maxOuts = g.outsPerInning || 3;
+    // CAMBIO AUTOMÁTICO DE INNING AL COMPLETAR EL ÚLTIMO OUT SEGÚN CONFIGURACIÓN (Requisitos 1 y 2)
     if (liveGameState.outs >= maxOuts) {
-      const maxInnings = g.innings || 7;
-      const isBottom = liveGameState.half === 'home';
-      const isFinalInning = liveGameState.inning >= maxInnings;
-
-      // Verificar si el partido ya finalizó
-      if (isFinalInning && isBottom && liveGameState.awayScore !== liveGameState.homeScore) {
-        finishLiveGame(false);
-        return;
-      } else if (isFinalInning && !isBottom && liveGameState.homeScore > liveGameState.awayScore) {
+      // 1. Si terminó la ALTA de la última entrada y el local ya está en ventaja -> Finaliza inmediatamente
+      if (isFinalInning && !isBottom && liveGameState.homeScore > liveGameState.awayScore) {
         finishLiveGame(false);
         return;
       }
 
-      // Transición automática e inmediata sin que el usuario salga y vuelva a entrar
+      // 2. Si terminó la BAJA de la última entrada -> El partido se ha completado en su totalidad
+      if (isFinalInning && isBottom) {
+        finishLiveGame(false);
+        return;
+      }
+
+      // 3. Transición automática e inmediata sin que el usuario salga y vuelva a entrar
       liveGameState.outs = 0;
       liveGameState.runners = { '1B': null, '2B': null, '3B': null };
       g.runners = { '1B': null, '2B': null, '3B': null };
@@ -2917,7 +2995,8 @@
       homeBattingIndex: liveGameState.homeBattingIndex,
       runners: { ...liveGameState.runners },
       activePitcherAway: liveGameState.activePitcherAway,
-      activePitcherHome: liveGameState.activePitcherHome
+      activePitcherHome: liveGameState.activePitcherHome,
+      status: g.status
     });
 
     g.batLog.pop();
@@ -2936,6 +3015,11 @@
     g.runners = { ...snap.runners };
     liveGameState.activePitcherAway = snap.activePitcherAway;
     liveGameState.activePitcherHome = snap.activePitcherHome;
+    g.status = snap.status || 'LIVE';
+    liveGameState.active = g.status === 'LIVE';
+    if (liveGameState.active) {
+      localStorage.setItem('rosmil_active_game_id', g.id);
+    }
 
     recalcStats();
     save();
@@ -2966,7 +3050,8 @@
       homeBattingIndex: liveGameState.homeBattingIndex,
       runners: { ...liveGameState.runners },
       activePitcherAway: liveGameState.activePitcherAway,
-      activePitcherHome: liveGameState.activePitcherHome
+      activePitcherHome: liveGameState.activePitcherHome,
+      status: g.status
     });
 
     g.batLog.push(redoSnap.pa);
@@ -2984,6 +3069,11 @@
     g.runners = { ...redoSnap.runners };
     liveGameState.activePitcherAway = redoSnap.activePitcherAway;
     liveGameState.activePitcherHome = redoSnap.activePitcherHome;
+    g.status = redoSnap.status || 'LIVE';
+    liveGameState.active = g.status === 'LIVE';
+    if (liveGameState.active) {
+      localStorage.setItem('rosmil_active_game_id', g.id);
+    }
 
     recalcStats();
     save();
@@ -2999,22 +3089,25 @@
     g.runners = { '1B': null, '2B': null, '3B': null };
 
     $('#liveInningEndPanel').style.display = 'none';
-    $('#livePlayBox').style.display = 'block';
 
-    const maxInnings = g.innings || 7;
+    const maxInnings = Math.max(1, Number(g.innings) || 7);
 
     if (liveGameState.half === 'away') {
-      liveGameState.half = 'home';
-    } else {
-      liveGameState.half = 'away';
-      liveGameState.inning += 1;
-
-      if (liveGameState.inning > maxInnings && liveGameState.awayScore !== liveGameState.homeScore) {
+      if (liveGameState.inning >= maxInnings && liveGameState.homeScore > liveGameState.awayScore) {
         finishLiveGame(false);
         return;
       }
+      liveGameState.half = 'home';
+    } else {
+      if (liveGameState.inning >= maxInnings) {
+        finishLiveGame(false);
+        return;
+      }
+      liveGameState.half = 'away';
+      liveGameState.inning += 1;
     }
 
+    save();
     renderLiveGameUI();
   }
 
@@ -3078,6 +3171,12 @@
     recalcStats();
     save();
     updateActiveGameBanner();
+    renderAll();
+
+    const maxInnings = Math.max(1, Number(g.innings) || 7);
+    if ($('#liveInningText')) {
+      $('#liveInningText').textContent = `FINAL (${maxInnings} ENTRADAS)`;
+    }
 
     const winnerId = g.homeScore > g.awayScore ? g.home : g.awayScore > g.homeScore ? g.away : null;
     const loserId = winnerId === g.home ? g.away : winnerId === g.away ? g.home : null;
@@ -3149,9 +3248,13 @@
       banner.style.display = 'block';
       const aName = teamName(activeGame.away);
       const hName = teamName(activeGame.home);
-      $('#activeLiveBannerMatchup').textContent = `${aName} (${activeGame.awayScore}) vs ${hName} (${activeGame.homeScore})`;
-      $('#activeLiveBannerMeta').textContent = `${seasonName(activeGame.season)} • ${activeGame.stadium || 'Estadio'}`;
-      $('#btnResumeActiveGame').onclick = () => initLiveGame(activeGame.id);
+      if ($('#liveBannerTitle')) $('#liveBannerTitle').textContent = `${aName} vs ${hName}`;
+      if ($('#liveBannerScore')) $('#liveBannerScore').textContent = `${activeGame.awayScore} — ${activeGame.homeScore}`;
+      if ($('#liveBannerMeta')) {
+        $('#liveBannerMeta').textContent = `${seasonName(activeGame.season)} • ${activeGame.stadium || 'Estadio'}`;
+      }
+      const resumeBtn = $('#btnResumeActiveGame');
+      if (resumeBtn) resumeBtn.onclick = () => initLiveGame(activeGame.id);
     } else {
       banner.style.display = 'none';
     }
@@ -4384,6 +4487,7 @@
 
   function renderStandings() {
     const el = $('#standingsList');
+    if (!el) return;
     if (!db.teams.length) {
       el.innerHTML = empty('No hay equipos', 'Las posiciones aparecerán al registrar equipos y juegos.');
       return;
@@ -5625,11 +5729,13 @@
     $('#gameModalTitle').textContent = gid ? 'Editar juego' : 'Registrar juego';
     f.awayScore.value = 0;
     f.homeScore.value = 0;
+    if (f.elements.innings) f.elements.innings.value = 7;
+    if (f.elements.outsPerInning) f.elements.outsPerInning.value = 3;
     populateSelects();
 
     const g = gid && getGame(gid);
     if (g) {
-      ['season', 'series', 'gameNumber', 'date', 'time', 'home', 'away', 'stadium', 'awayScore', 'homeScore'].forEach(
+      ['season', 'series', 'gameNumber', 'date', 'time', 'home', 'away', 'stadium', 'awayScore', 'homeScore', 'innings', 'outsPerInning'].forEach(
         k => {
           if (f.elements[k]) f.elements[k].value = g[k] ?? '';
         }
@@ -6065,6 +6171,8 @@
         stadium: f.get('stadium'),
         homeScore: Number(f.get('homeScore')) || 0,
         awayScore: Number(f.get('awayScore')) || 0,
+        innings: Math.max(1, Number(f.get('innings')) || 7),
+        outsPerInning: Math.max(1, Number(f.get('outsPerInning')) || 3),
         status: 'Finalizado'
       });
       g.batLog = Array.isArray(g.batLog) ? g.batLog : [];
@@ -6183,7 +6291,12 @@
     if ($('#wizBackBtn2')) $('#wizBackBtn2').addEventListener('click', () => setWizardStep(1));
     if ($('#wizBtnStep2')) {
       $('#wizBtnStep2').addEventListener('click', () => {
-        wizardState.outsPerInning = Number($('#wizOutsPerInning').value) || 3;
+        const customInn = $('#wizCustomInnings') ? Number($('#wizCustomInnings').value) : 0;
+        if (customInn > 0) {
+          wizardState.innings = customInn;
+        }
+        const outsInput = $('#wizOutsPerInning') ? Number($('#wizOutsPerInning').value) : 3;
+        wizardState.outsPerInning = Math.max(1, outsInput || 3);
         setWizardStep(3);
       });
     }
@@ -6273,6 +6386,36 @@
     if ($('#btnLiveOpenReplay')) {
       $('#btnLiveOpenReplay').addEventListener('click', () => {
         if (liveGameState.gameId) openGameReplay(liveGameState.gameId);
+      });
+    }
+
+    // BOTONES DE TRANSICIÓN Y FINALIZACIÓN EN CONSOLA EN VIVO
+    if ($('#btnLiveNextInning')) {
+      $('#btnLiveNextInning').addEventListener('click', advanceToNextInning);
+    }
+
+    if ($('#btnLiveFinishGameEarly')) {
+      $('#btnLiveFinishGameEarly').addEventListener('click', () => {
+        if (!checkAdmin()) return;
+        if (confirm('¿Finalizar el partido inmediatamente? Se guardarán todas las estadísticas registradas hasta el momento.')) {
+          finishLiveGame(false);
+        }
+      });
+    }
+
+    if ($('#btnLiveCloseGameOver')) {
+      $('#btnLiveCloseGameOver').addEventListener('click', () => {
+        closeModals();
+        renderAll();
+        show('games');
+      });
+    }
+
+    if ($('#btnLiveGoToReplayFromOver')) {
+      $('#btnLiveGoToReplayFromOver').addEventListener('click', () => {
+        const gid = liveGameState.gameId;
+        closeModals();
+        if (gid) openGameReplay(gid);
       });
     }
 
@@ -6655,4 +6798,13 @@
   renderAll();
   updateActiveGameBanner();
   initFirebaseSync();
+
+  window.rosmil = {
+    initLiveGame,
+    confirmLivePlay,
+    advanceToNextInning,
+    finishLiveGame,
+    getLiveGameState: () => liveGameState,
+    getDb: () => db
+  };
 })();

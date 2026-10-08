@@ -695,6 +695,14 @@
             <label>Marcador local</label>
             <input name="homeScore" type="number" min="0" value="0">
           </div>
+          <div class="field">
+            <label>Entradas pactadas (Innings)</label>
+            <input name="innings" type="number" min="1" max="25" value="7" required>
+          </div>
+          <div class="field">
+            <label>Outs por media entrada</label>
+            <input name="outsPerInning" type="number" min="1" max="10" value="3" required>
+          </div>
         </div>
         <div class="formactions">
           <button type="submit" class="btn red">Guardar juego</button>
@@ -1132,8 +1140,8 @@
         <div class="live-center-status">
           <div class="live-inning-badge" id="liveInningText">ENTRADA 1 (ALTA)</div>
           <div class="live-outs-display">
-            <span class="live-outs-label">OUTS:</span>
-            <div class="out-dots">
+            <span class="live-outs-label" id="liveOutsLabel">OUTS:</span>
+            <div class="out-dots" id="liveOutDotsContainer">
               <span class="out-dot" id="outDot1" title="Out 1"></span>
               <span class="out-dot" id="outDot2" title="Out 2"></span>
               <span class="out-dot" id="outDot3" title="Out 3"></span>
@@ -1629,6 +1637,6 @@
   <!-- Firebase Configuration -->
   <script src="js/firebase-config.js"></script>
   <!-- Application Logic -->
-  <script src="js/app.js"></script>
+  <script src="js/app.js?v=rosmil_0.3.2"></script>
 </body>
 </html>
