@@ -45,6 +45,42 @@
   let compareTeamId = null;
   let pendingDeleteAction = null;
 
+  // Estado del Asistente de Partidos Paso a Paso (ROSMIL LEAGUE 0.2)
+  let wizardState = {
+    step: 1,
+    gameName: '',
+    season: '',
+    date: '',
+    time: '',
+    stadium: '',
+    innings: 7,
+    outsPerInning: 3,
+    homeTeam: '',
+    awayTeam: '',
+    homePositions: {},
+    homeBattingOrder: [],
+    awayPositions: {},
+    awayBattingOrder: []
+  };
+
+  // Estado de la Consola de Juego en Vivo (ROSMIL LEAGUE 0.2)
+  let liveGameState = {
+    active: false,
+    gameId: null,
+    game: null,
+    inning: 1,
+    half: 'away', // 'away' = Alta (batea visitante) | 'home' = Baja (batea local)
+    outs: 0,
+    awayScore: 0,
+    homeScore: 0,
+    awayBattingIndex: 0,
+    homeBattingIndex: 0,
+    activePitcherAway: null,
+    activePitcherHome: null,
+    selectedPlayResult: 'Single',
+    selectedRbi: 0
+  };
+
   // Load persisted state
   try {
     const saved = localStorage.getItem(KEY);
@@ -285,7 +321,7 @@
   }
 
   function isPitcher(p) {
-    return p?.role === 'pitcher' || p?.role === 'two-way' || p?.isPitcher === true;
+    return p?.role === 'pitcher' || p?.role === 'two-way' || p?.isPitcher === true || p?.isPitcherChoice === 'yes';
   }
 
   function isBatter(p) {
@@ -588,6 +624,7 @@
       players: 'Jugadores',
       stats: 'Estadísticas',
       leaders: 'Líderes',
+      ranking: 'Ranking General',
       history: 'Historial',
       admin: 'Administración',
       teamProfile: 'Perfil de Equipo',
@@ -913,7 +950,290 @@
   }
 
   // ----------------------------------------------------
-  // RENDER: PERFIL DE JUGADOR (REGLAS 7, 8, 9, 10, 11, 12)
+  // ADN DEL JUGADOR & SCOUTING REPORT (ROSMIL LEAGUE 0.2)
+  // ----------------------------------------------------
+  function calculatePlayerDNA(p, sourcePAs) {
+    const isP = isPitcher(p);
+    const bat = batterStats(p.id, sourcePAs);
+    const pitch = isP ? pitcherStats(p.id, sourcePAs) : null;
+
+    const batterDNA = {
+      hasData: bat.PA > 0,
+      attrs: []
+    };
+
+    if (bat.PA > 0) {
+      // CONTACTO (0-99): Basado en AVG y porcentaje de hits
+      const rawContact = Math.round(bat.AVG * 120 + 50);
+      const contactRating = Math.min(99, Math.max(50, rawContact));
+      batterDNA.attrs.push({
+        name: 'CONTACTO',
+        rating: contactRating,
+        desc: `Promedio de bateo oficial: ${fmtAvg(bat.AVG)} (${bat.H} H en ${bat.AB} AB)`,
+        tier: contactRating >= 88 ? 'ELITE' : contactRating >= 78 ? 'ALTO' : contactRating >= 65 ? 'PROMEDIO' : 'MEJORABLE',
+        insufficient: false
+      });
+
+      // PODER (0-99): Basado en SLG, HR y extrabases
+      const extraBases = bat.D * 2 + bat.T * 3 + bat.HR * 4;
+      const rawPower = Math.round(bat.SLG * 60 + 40 + (extraBases / (bat.PA || 1)) * 15);
+      const powerRating = Math.min(99, Math.max(45, rawPower));
+      batterDNA.attrs.push({
+        name: 'PODER',
+        rating: powerRating,
+        desc: `${bat.HR} HR, ${bat.D} Dobles, ${bat.T} Triples (SLG: ${fmtAvg(bat.SLG)})`,
+        tier: powerRating >= 88 ? 'MUY ALTO' : powerRating >= 78 ? 'ALTO' : powerRating >= 65 ? 'MEDIO' : 'MEJORABLE',
+        insufficient: false
+      });
+
+      // PRODUCCIÓN (0-99): Capacidad de remolcar carreras y anotar
+      const prodRate = (bat.RBI * 1.6 + bat.R) / (bat.PA || 1);
+      const prodRating = Math.min(99, Math.max(45, Math.round(prodRate * 45 + 50)));
+      batterDNA.attrs.push({
+        name: 'PRODUCCIÓN',
+        rating: prodRating,
+        desc: `${bat.RBI} carreras remolcadas (RBI) y ${bat.R} carreras anotadas`,
+        tier: prodRating >= 85 ? 'MUY ALTO' : prodRating >= 75 ? 'ALTO' : prodRating >= 60 ? 'PROMEDIO' : 'MEJORABLE',
+        insufficient: false
+      });
+
+      // CONSISTENCIA (0-99): Disciplina en el plato y ratio SO
+      const soRate = bat.SO / (bat.PA || 1);
+      const consistRating = Math.min(99, Math.max(45, Math.round(85 - (soRate * 40) + (bat.AVG * 25))));
+      batterDNA.attrs.push({
+        name: 'CONSISTENCIA',
+        rating: consistRating,
+        desc: `Ratio de contacto consistente (${bat.SO} ponches en ${bat.PA} PA)`,
+        tier: consistRating >= 85 ? 'EXCELENTE' : consistRating >= 75 ? 'ALTO' : 'PROMEDIO',
+        insufficient: false
+      });
+
+      // DEFENSA (0-99): Posición defensiva habitual
+      const posDefenseMap = { SS: 88, CF: 86, C: 85, '2B': 82, '3B': 80, RF: 78, LF: 76, '1B': 74, DH: 65, Pitcher: 75 };
+      const defRating = posDefenseMap[p.position] || 75;
+      batterDNA.attrs.push({
+        name: 'DEFENSA',
+        rating: defRating,
+        desc: `Fildeo en posición defensiva: ${esc(p.position || 'General')}`,
+        tier: defRating >= 82 ? 'ALTO' : 'PROMEDIO',
+        insufficient: false
+      });
+
+      // CLUTCH (0-99): Oportunidad con corredores
+      const clutchRating = Math.min(99, Math.max(50, Math.round(55 + (bat.RBI / (bat.H || 1)) * 28)));
+      batterDNA.attrs.push({
+        name: 'CLUTCH',
+        rating: clutchRating,
+        desc: 'Efectividad produciendo en momentos clave del partido',
+        tier: clutchRating >= 85 ? 'MUY ALTO' : clutchRating >= 75 ? 'ALTO' : 'PROMEDIO',
+        insufficient: false
+      });
+
+      // VELOCIDAD: Si tiene bases robadas, muestra rating. Si no, DATOS INSUFICIENTES
+      if (bat.SB > 0) {
+        const speedRating = Math.min(99, 65 + bat.SB * 8);
+        batterDNA.attrs.push({
+          name: 'VELOCIDAD',
+          rating: speedRating,
+          desc: `${bat.SB} bases robadas registradas`,
+          tier: speedRating >= 85 ? 'ELITE' : 'ALTO',
+          insufficient: false
+        });
+      } else {
+        batterDNA.attrs.push({
+          name: 'VELOCIDAD',
+          rating: null,
+          desc: 'Sin bases robadas registradas',
+          insufficient: true
+        });
+      }
+    } else {
+      // Regla de Oro: NO inventar datos si no hay suficientes
+      ['CONTACTO', 'PODER', 'PRODUCCIÓN', 'CONSISTENCIA', 'DEFENSA', 'CLUTCH', 'VELOCIDAD'].forEach(name => {
+        batterDNA.attrs.push({
+          name,
+          rating: null,
+          desc: 'Sin partidos o turnos registrados aún',
+          insufficient: true
+        });
+      });
+    }
+
+    // ADN DE LANZADOR
+    let pitcherDNA = null;
+    if (isP) {
+      pitcherDNA = {
+        hasData: pitch && pitch.outs > 0,
+        attrs: []
+      };
+
+      if (pitch && pitch.outs > 0) {
+        // CONTROL (0-99): K/BB y boletos bajos
+        const bbPerOut = pitch.BB / (pitch.outs || 1);
+        const controlRating = Math.min(99, Math.max(45, Math.round(92 - (bbPerOut * 45))));
+        pitcherDNA.attrs.push({
+          name: 'CONTROL',
+          rating: controlRating,
+          desc: `Comando de zona de strike (${pitch.BB} boletos en ${pitch.IP} IP)`,
+          tier: controlRating >= 85 ? 'MUY ALTO' : controlRating >= 75 ? 'ALTO' : 'PROMEDIO',
+          insufficient: false
+        });
+
+        // PONCHES (0-99): SO por outs
+        const kRate = pitch.SO / (pitch.outs || 1);
+        const kRating = Math.min(99, Math.max(45, Math.round(50 + (kRate * 85))));
+        pitcherDNA.attrs.push({
+          name: 'PONCHES',
+          rating: kRating,
+          desc: `${pitch.SO} strikeouts registrados`,
+          tier: kRating >= 88 ? 'ELITE' : kRating >= 78 ? 'ALTO' : 'PROMEDIO',
+          insufficient: false
+        });
+
+        // EFECTIVIDAD (0-99): ERA inverso
+        const eraRating = Math.min(99, Math.max(45, Math.round(98 - (pitch.ERA * 6))));
+        pitcherDNA.attrs.push({
+          name: 'EFECTIVIDAD (ERA)',
+          rating: eraRating,
+          desc: `Efectividad oficial: ${pitch.ERA.toFixed(2)}`,
+          tier: eraRating >= 88 ? 'ELITE' : eraRating >= 78 ? 'ALTO' : eraRating >= 65 ? 'PROMEDIO' : 'MEJORABLE',
+          insufficient: false
+        });
+
+        // DOMINIO (0-99): WHIP bajo y pocos hits
+        const whipRating = Math.min(99, Math.max(45, Math.round(96 - (pitch.WHIP * 16))));
+        pitcherDNA.attrs.push({
+          name: 'DOMINIO (WHIP)',
+          rating: whipRating,
+          desc: `WHIP oficial: ${pitch.WHIP.toFixed(2)}`,
+          tier: whipRating >= 85 ? 'MUY ALTO' : whipRating >= 75 ? 'ALTO' : 'PROMEDIO',
+          insufficient: false
+        });
+
+        // RESISTENCIA (0-99): Entradas acumuladas
+        const innNum = Math.floor(pitch.outs / 3);
+        const stamRating = Math.min(99, Math.max(50, Math.round(60 + innNum * 3)));
+        pitcherDNA.attrs.push({
+          name: 'RESISTENCIA',
+          rating: stamRating,
+          desc: `${pitch.IP} entradas totales en el montículo`,
+          tier: stamRating >= 80 ? 'ALTO' : 'PROMEDIO',
+          insufficient: false
+        });
+      } else {
+        ['CONTROL', 'PONCHES', 'EFECTIVIDAD (ERA)', 'DOMINIO (WHIP)', 'RESISTENCIA'].forEach(name => {
+          pitcherDNA.attrs.push({
+            name,
+            rating: null,
+            desc: 'Sin entradas lanzadas registradas aún',
+            insufficient: true
+          });
+        });
+      }
+    }
+
+    return { batterDNA, pitcherDNA, isPitcher: isP };
+  }
+
+  function renderPlayerDNASection(p, sourcePAs) {
+    const { batterDNA, pitcherDNA, isPitcher: isP } = calculatePlayerDNA(p, sourcePAs);
+
+    const makeAttrCard = a => `
+      <div class="dna-card">
+        <div class="dna-card-head">
+          <span class="dna-attr-name">${esc(a.name)}</span>
+          ${
+            a.insufficient
+              ? `<span class="dna-insufficient-badge">DATOS INSUFICIENTES</span>`
+              : `<span class="dna-attr-rating">${a.rating}</span>`
+          }
+        </div>
+        <div class="dna-meter-track">
+          <div class="dna-meter-fill ${a.insufficient ? 'dna-insufficient-bar' : ''}" style="width: ${
+            a.insufficient ? '0%' : a.rating + '%'
+          }"></div>
+        </div>
+        <div class="dna-attr-desc">
+          ${
+            a.insufficient
+              ? `<span style="color:#64748b">DATOS INSUFICIENTES (Sin registros oficiales)</span>`
+              : `<b>${esc(a.tier)}</b> • ${esc(a.desc)}`
+          }
+        </div>
+      </div>
+    `;
+
+    const allAttrs = [...batterDNA.attrs, ...(pitcherDNA ? pitcherDNA.attrs : [])];
+    const validAttrs = allAttrs.filter(a => !a.insufficient);
+    const strengths = validAttrs.filter(a => a.rating >= 78);
+    const improvements = validAttrs.filter(a => a.rating < 70);
+
+    return `
+      <div class="dna-panel">
+        <div class="dna-panel-header">
+          <div class="dna-panel-title">
+            <span style="font-size:26px">🧬</span>
+            <div>
+              <h3>ADN DEL JUGADOR • SCOUTING REPORT OFICIAL</h3>
+              <small class="muted">Métricas sabermétricas dinámicas generadas exclusivamente de partidos reales (ROSMIL LEAGUE 0.2)</small>
+            </div>
+          </div>
+          <span class="tag" style="background:#092e1a;color:var(--yellow);border:1px solid var(--yellow-border);font-weight:800">
+            ${isP ? 'ADN BATEADOR & LANZADOR' : 'ADN OFENSIVO'}
+          </span>
+        </div>
+
+        <h4 style="color:var(--yellow);margin:12px 0 10px;font-size:14px;letter-spacing:0.5px">⚡ PERFIL OFENSIVO (BATEO)</h4>
+        <div class="dna-grid">
+          ${batterDNA.attrs.map(makeAttrCard).join('')}
+        </div>
+
+        ${
+          isP
+            ? `
+          <h4 style="color:var(--yellow);margin:22px 0 10px;font-size:14px;letter-spacing:0.5px">⚾ PERFIL MONTICULAR (PITCHEO)</h4>
+          <div class="dna-grid">
+            ${pitcherDNA.attrs.map(makeAttrCard).join('')}
+          </div>`
+            : ''
+        }
+
+        <!-- Resumen de Scouting -->
+        <div class="dna-scouting-summary">
+          <div class="dna-scout-box strengths">
+            <h5>🎯 FORTALEZAS PRINCIPALES DETECTADAS</h5>
+            <div>
+              ${
+                strengths.length
+                  ? strengths
+                      .map(
+                        s =>
+                          `<span class="dna-tag-pill" style="border-color:#22c55e">✓ ${esc(s.name)}: ${esc(s.tier)}</span>`
+                      )
+                      .join('')
+                  : '<span class="muted" style="font-size:12px">Acumula más partidos para consolidar fortalezas élite.</span>'
+              }
+            </div>
+          </div>
+          <div class="dna-scout-box improvements">
+            <h5>📈 ÁREAS DE DESARROLLO</h5>
+            <div>
+              ${
+                improvements.length
+                  ? improvements
+                      .map(s => `<span class="dna-tag-pill" style="border-color:var(--yellow)">• ${esc(s.name)}</span>`)
+                      .join('')
+                  : '<span class="muted" style="font-size:12px">Rendimiento consistente y equilibrado en la muestra de partidos.</span>'
+              }
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // ----------------------------------------------------
+  // RENDER: PERFIL DE JUGADOR (REGLAS 7, 8, 9, 10, 11, 12, 26-32, 35-38)
   // ----------------------------------------------------
   function renderPlayerProfile() {
     const el = $('#playerProfileArea');
@@ -1012,7 +1332,10 @@
         }
       </div>
 
-      <div class="grid2" style="margin-bottom:20px">
+      <!-- SECCIÓN ADN DEL JUGADOR (ROSMIL LEAGUE 0.2) -->
+      ${renderPlayerDNASection(p, pPas)}
+
+      <div class="grid2" style="margin-bottom:20px;margin-top:20px">
         <!-- REGLA N° 11: Historial de Equipos del Jugador -->
         <div class="panel">
           <div class="head">
@@ -1411,8 +1734,665 @@
     );
   }
 
+  // ----------------------------------------------------
+  // ASISTENTE DE CREACIÓN DE PARTIDOS (ROSMIL LEAGUE 0.2 - WIZARD)
+  // ----------------------------------------------------
+  function populateWizardSelects() {
+    const seasonOpts = db.seasons.length
+      ? db.seasons
+          .map(
+            s =>
+              `<option value="${s.id}">${esc(s.name)} (${s.type === 'league' ? 'Liga' : 'Eliminatoria'})</option>`
+          )
+          .join('')
+      : '<option value="">Sin temporadas creadas</option>';
+    if ($('#wizGameSeason')) $('#wizGameSeason').innerHTML = seasonOpts;
+
+    const teamOpts = db.teams.length
+      ? db.teams.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')
+      : '<option value="">Sin equipos</option>';
+    if ($('#wizHomeTeam')) $('#wizHomeTeam').innerHTML = teamOpts;
+    if ($('#wizAwayTeam')) $('#wizAwayTeam').innerHTML = teamOpts;
+
+    if (db.teams.length > 1 && $('#wizAwayTeam')) {
+      $('#wizAwayTeam').value = db.teams[1].id;
+    }
+  }
+
+  function openGameWizard() {
+    if (!checkAdmin()) return;
+    if (db.teams.length < 2) {
+      alert('Debes registrar al menos 2 equipos para crear un partido.');
+      return;
+    }
+
+    wizardState = {
+      step: 1,
+      gameName: '',
+      season: db.seasons[0]?.id || '',
+      date: new Date().toISOString().split('T')[0],
+      time: '19:00',
+      stadium: '',
+      innings: 7,
+      outsPerInning: 3,
+      homeTeam: db.teams[0].id,
+      awayTeam: db.teams[1] ? db.teams[1].id : db.teams[0].id,
+      homePositions: {},
+      homeBattingOrder: [],
+      awayPositions: {},
+      awayBattingOrder: []
+    };
+
+    if ($('#wizGameDate')) $('#wizGameDate').value = wizardState.date;
+    if ($('#wizGameTime')) $('#wizGameTime').value = wizardState.time;
+    if ($('#wizGameName')) {
+      $('#wizGameName').value = `${teamName(wizardState.awayTeam)} vs ${teamName(wizardState.homeTeam)}`;
+    }
+    if ($('#wizOutsPerInning')) $('#wizOutsPerInning').value = 3;
+
+    populateWizardSelects();
+    setWizardStep(1);
+    openModal('gameWizardModal');
+  }
+
+  function setWizardStep(step) {
+    wizardState.step = step;
+
+    for (let i = 1; i <= 6; i++) {
+      const pill = $(`#pillStep${i}`);
+      const page = $(`#wizPage${i}`);
+      if (pill) {
+        pill.classList.toggle('active', i === step);
+        pill.classList.toggle('completed', i < step);
+      }
+      if (page) {
+        page.style.display = i === step ? 'block' : 'none';
+      }
+    }
+
+    if (step === 4) {
+      if ($('#wizHomeTeamNameLabel')) {
+        $('#wizHomeTeamNameLabel').textContent = teamName(wizardState.homeTeam);
+      }
+      renderFieldPositions('homeFieldPositions', wizardState.homeTeam, wizardState.homePositions);
+      renderBattingOrder('homeOrderList', wizardState.homeTeam, wizardState.homeBattingOrder);
+    } else if (step === 5) {
+      if ($('#wizAwayTeamNameLabel')) {
+        $('#wizAwayTeamNameLabel').textContent = teamName(wizardState.awayTeam);
+      }
+      renderFieldPositions('awayFieldPositions', wizardState.awayTeam, wizardState.awayPositions);
+      renderBattingOrder('awayOrderList', wizardState.awayTeam, wizardState.awayBattingOrder);
+    } else if (step === 6) {
+      renderWizardSummary();
+    }
+  }
+
+  function renderFieldPositions(containerId, teamId, positionsMap) {
+    const players = teamPlayers(teamId);
+    const container = $(`#${containerId}`);
+    if (!container) return;
+
+    const selects = container.querySelectorAll('.pos-select');
+    selects.forEach(sel => {
+      const pos = sel.dataset.fieldPos;
+      sel.innerHTML =
+        `<option value="">-- ${pos} --</option>` +
+        players
+          .map(
+            p =>
+              `<option value="${p.id}" ${positionsMap[pos] === p.id ? 'selected' : ''}>${esc(p.name)} (#${esc(
+                p.number || '—'
+              )})</option>`
+          )
+          .join('');
+
+      if (!positionsMap[pos]) {
+        const matched = players.find(
+          p => p.position === pos && !Object.values(positionsMap).includes(p.id)
+        );
+        if (matched) {
+          positionsMap[pos] = matched.id;
+          sel.value = matched.id;
+        } else if (pos === 'P') {
+          const defaultP = players.find(p => isPitcher(p)) || players[0];
+          if (defaultP) {
+            positionsMap[pos] = defaultP.id;
+            sel.value = defaultP.id;
+          }
+        }
+      }
+
+      sel.onchange = () => {
+        positionsMap[pos] = sel.value;
+      };
+    });
+  }
+
+  function renderBattingOrder(containerId, teamId, orderArray) {
+    const players = teamPlayers(teamId);
+    const container = $(`#${containerId}`);
+    if (!container) return;
+
+    while (orderArray.length < 9) {
+      const idx = orderArray.length;
+      orderArray.push(players[idx] ? players[idx].id : '');
+    }
+
+    container.innerHTML = orderArray
+      .map(
+        (selectedPid, idx) => `
+      <div class="order-item-row">
+        <div class="order-idx">${idx + 1}</div>
+        <select class="order-select" data-order-idx="${idx}">
+          <option value="">-- Bateador #${idx + 1} --</option>
+          ${players
+            .map(
+              p =>
+                `<option value="${p.id}" ${p.id === selectedPid ? 'selected' : ''}>${esc(p.name)} (#${esc(
+                  p.number || '—'
+                )}) - ${esc(p.position || '')}</option>`
+            )
+            .join('')}
+        </select>
+      </div>`
+      )
+      .join('');
+
+    container.querySelectorAll('.order-select').forEach(sel => {
+      sel.onchange = () => {
+        const i = Number(sel.dataset.orderIdx);
+        orderArray[i] = sel.value;
+      };
+    });
+  }
+
+  function autoFillBattingOrder(teamId, orderArray, containerId) {
+    const players = teamPlayers(teamId);
+    for (let i = 0; i < 9; i++) {
+      orderArray[i] = players[i] ? players[i].id : '';
+    }
+    renderBattingOrder(containerId, teamId, orderArray);
+  }
+
+  function renderWizardSummary() {
+    const el = $('#wizSummaryArea');
+    if (!el) return;
+
+    const hTeam = teamName(wizardState.homeTeam);
+    const aTeam = teamName(wizardState.awayTeam);
+    const sName = seasonName(wizardState.season);
+
+    el.innerHTML = `
+      <div class="head">
+        <div>
+          <h3 style="color:var(--yellow);margin:0">${esc(wizardState.gameName || `${aTeam} vs ${hTeam}`)}</h3>
+          <div class="muted">${esc(sName)} • ${esc(wizardState.date)} ${esc(wizardState.time || '')} ${
+      wizardState.stadium ? '• ' + esc(wizardState.stadium) : ''
+    }</div>
+        </div>
+        <span class="tag" style="background:#0e3621;color:var(--yellow)">${wizardState.innings} Entradas • ${
+      wizardState.outsPerInning
+    } Outs/Media Entrada</span>
+      </div>
+
+      <div class="wiz-summary-grid">
+        <div class="wiz-summary-team">
+          <h4>VISITANTE: ${esc(aTeam)}</h4>
+          <small class="muted">Batea en la parte alta</small>
+          <div style="margin-top:10px;font-size:13px">
+            <b>Orden de Bateo Oficial:</b>
+            <ol style="margin:6px 0;padding-left:20px">
+              ${wizardState.awayBattingOrder
+                .map(pid => `<li>${pid ? esc(playerName(pid)) : '<span class="muted">Sin asignar</span>'}</li>`)
+                .join('')}
+            </ol>
+          </div>
+        </div>
+
+        <div class="wiz-summary-team">
+          <h4>LOCAL: ${esc(hTeam)}</h4>
+          <small class="muted">Batea en la parte baja</small>
+          <div style="margin-top:10px;font-size:13px">
+            <b>Orden de Bateo Oficial:</b>
+            <ol style="margin:6px 0;padding-left:20px">
+              ${wizardState.homeBattingOrder
+                .map(pid => `<li>${pid ? esc(playerName(pid)) : '<span class="muted">Sin asignar</span>'}</li>`)
+                .join('')}
+            </ol>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function startLiveGameFromWizard() {
+    if (!checkAdmin()) return;
+
+    if (!wizardState.homeTeam || !wizardState.awayTeam || wizardState.homeTeam === wizardState.awayTeam) {
+      alert('Debes seleccionar dos equipos diferentes.');
+      return;
+    }
+
+    const gid = id();
+    const g = {
+      id: gid,
+      name: wizardState.gameName || `${teamName(wizardState.awayTeam)} vs ${teamName(wizardState.homeTeam)}`,
+      season: wizardState.season || db.seasons[0]?.id || '',
+      date: wizardState.date || new Date().toISOString().split('T')[0],
+      time: wizardState.time || '',
+      stadium: wizardState.stadium || '',
+      home: wizardState.homeTeam,
+      away: wizardState.awayTeam,
+      innings: Number(wizardState.innings) || 7,
+      outsPerInning: Number(wizardState.outsPerInning) || 3,
+      homeScore: 0,
+      awayScore: 0,
+      homePositions: wizardState.homePositions,
+      awayPositions: wizardState.awayPositions,
+      homeLineup: wizardState.homeBattingOrder.filter(Boolean),
+      awayLineup: wizardState.awayBattingOrder.filter(Boolean),
+      batLog: [],
+      status: 'En curso'
+    };
+
+    if (!g.homeLineup.length) {
+      g.homeLineup = teamPlayers(g.home).map(p => p.id).slice(0, 9);
+    }
+    if (!g.awayLineup.length) {
+      g.awayLineup = teamPlayers(g.away).map(p => p.id).slice(0, 9);
+    }
+
+    db.games.push(g);
+    save();
+    closeModals();
+    initLiveGame(gid);
+  }
+
+  // ----------------------------------------------------
+  // CONSOLA DE PARTIDO EN VIVO (ROSMIL LEAGUE 0.2 - INTERFAZ ULTRA-RÁPIDA)
+  // ----------------------------------------------------
+  function initLiveGame(gameId) {
+    const g = getGame(gameId);
+    if (!g) return;
+
+    const awayLineup =
+      g.awayLineup && g.awayLineup.length ? g.awayLineup : teamPlayers(g.away).map(p => p.id);
+    const homeLineup =
+      g.homeLineup && g.homeLineup.length ? g.homeLineup : teamPlayers(g.home).map(p => p.id);
+
+    const defaultPitcherHome =
+      g.homePositions?.P || teamPlayers(g.home, false, true)[0]?.id || homeLineup[0] || null;
+    const defaultPitcherAway =
+      g.awayPositions?.P || teamPlayers(g.away, false, true)[0]?.id || awayLineup[0] || null;
+
+    let currentInning = 1;
+    let currentHalf = 'away';
+    let outsCount = 0;
+    let awayIdx = 0;
+    let homeIdx = 0;
+
+    (g.batLog || []).forEach(pa => {
+      currentInning = Number(pa.inning) || 1;
+      currentHalf = pa.half || 'away';
+      if (Number(pa.outs) > 0) {
+        outsCount += Number(pa.outs);
+        if (outsCount >= (g.outsPerInning || 3)) {
+          outsCount = 0;
+          if (currentHalf === 'away') {
+            currentHalf = 'home';
+          } else {
+            currentHalf = 'away';
+            currentInning++;
+          }
+        }
+      }
+      if (pa.half === 'away') {
+        awayIdx = (awayIdx + 1) % (awayLineup.length || 1);
+      } else {
+        homeIdx = (homeIdx + 1) % (homeLineup.length || 1);
+      }
+    });
+
+    liveGameState = {
+      active: true,
+      gameId: g.id,
+      game: g,
+      inning: currentInning,
+      half: currentHalf,
+      outs: outsCount,
+      awayScore: Number(g.awayScore) || 0,
+      homeScore: Number(g.homeScore) || 0,
+      awayBattingIndex: awayIdx,
+      homeBattingIndex: homeIdx,
+      activePitcherAway: g.activePitcherAway || defaultPitcherAway,
+      activePitcherHome: g.activePitcherHome || defaultPitcherHome,
+      selectedPlayResult: 'Single',
+      selectedRbi: 0
+    };
+
+    closeModals();
+    $('#liveGameModal').classList.add('open');
+    renderLiveGameUI();
+  }
+
+  function renderLiveGameUI() {
+    const g = liveGameState.game;
+    if (!g) return;
+
+    const isAwayBatting = liveGameState.half === 'away';
+    const battingTeamId = isAwayBatting ? g.away : g.home;
+    const pitchingTeamId = isAwayBatting ? g.home : g.away;
+
+    const lineup = isAwayBatting
+      ? g.awayLineup?.length ? g.awayLineup : teamPlayers(g.away).map(p => p.id)
+      : g.homeLineup?.length ? g.homeLineup : teamPlayers(g.home).map(p => p.id);
+
+    const currentIndex = isAwayBatting ? liveGameState.awayBattingIndex : liveGameState.homeBattingIndex;
+    const batterId = lineup[currentIndex] || teamPlayers(battingTeamId)[0]?.id;
+    const pitcherId = isAwayBatting ? liveGameState.activePitcherHome : liveGameState.activePitcherAway;
+
+    const batter = db.players.find(x => x.id === batterId);
+    const pitcher = db.players.find(x => x.id === pitcherId);
+    const awayTeamObj = db.teams.find(x => x.id === g.away);
+    const homeTeamObj = db.teams.find(x => x.id === g.home);
+
+    // Marcador Superior
+    $('#liveAwayName').textContent = teamName(g.away);
+    $('#liveHomeName').textContent = teamName(g.home);
+    $('#liveAwayScore').textContent = g.awayScore;
+    $('#liveHomeScore').textContent = g.homeScore;
+
+    if (awayTeamObj?.logo) {
+      $('#liveAwayLogo').innerHTML = `<img src="${awayTeamObj.logo}" alt="">`;
+    } else {
+      $('#liveAwayLogo').textContent = '⚾';
+    }
+    if (homeTeamObj?.logo) {
+      $('#liveHomeLogo').innerHTML = `<img src="${homeTeamObj.logo}" alt="">`;
+    } else {
+      $('#liveHomeLogo').textContent = '⚾';
+    }
+
+    $('#liveAwayTag').textContent = isAwayBatting ? 'AL BATE' : 'DEFENSIVA';
+    $('#liveHomeTag').textContent = !isAwayBatting ? 'AL BATE' : 'DEFENSIVA';
+
+    // Entrada y Luces de Outs
+    $('#liveInningText').textContent = `ENTRADA ${liveGameState.inning} (${isAwayBatting ? 'ALTA' : 'BAJA'})`;
+
+    const maxOuts = g.outsPerInning || 3;
+    $('#outDot1').classList.toggle('active', liveGameState.outs >= 1);
+    $('#outDot2').classList.toggle('active', liveGameState.outs >= 2);
+    $('#outDot3').classList.toggle('active', liveGameState.outs >= 3);
+
+    // Bateador Activo
+    $('#liveBatterName').textContent = batter?.name || 'Bateador';
+    $('#liveBatterMeta').textContent = `#${currentIndex + 1} en orden (${teamName(battingTeamId)}) • Pos: ${
+      batter?.position || 'DH'
+    }`;
+    if (batter?.photo) {
+      $('#liveBatterPhoto').innerHTML = `<img src="${batter.photo}" alt="">`;
+    } else {
+      $('#liveBatterPhoto').textContent = '👤';
+    }
+
+    // Pitcher Activo
+    $('#livePitcherName').textContent = pitcher?.name || 'Lanzador';
+    $('#livePitcherMeta').textContent = `Lanzando por ${teamName(pitchingTeamId)}`;
+    if (pitcher?.photo) {
+      $('#livePitcherPhoto').innerHTML = `<img src="${pitcher.photo}" alt="">`;
+    } else {
+      $('#livePitcherPhoto').textContent = '⚾';
+    }
+
+    // Botones de Jugada seleccionada
+    $$('.btn-play-action').forEach(b => {
+      b.classList.toggle('selected', b.dataset.action === liveGameState.selectedPlayResult);
+    });
+
+    // Botones de RBI seleccionado
+    $$('.btn-rbi-opt').forEach(b => {
+      b.classList.toggle('active', Number(b.dataset.rbi) === liveGameState.selectedRbi);
+    });
+
+    // Contador y log de jugadas
+    const log = g.batLog || [];
+    $('#livePlayCount').textContent = log.length;
+    $('#liveLogList').innerHTML = log.length
+      ? log
+          .slice()
+          .reverse()
+          .slice(0, 6)
+          .map(
+            pa => `
+        <div class="live-log-row">
+          <span><b>Inn ${pa.inning} (${pa.half === 'away' ? 'VIS' : 'LOC'}):</b> ${esc(
+              playerName(pa.batter)
+            )} ➔ <span style="color:var(--yellow);font-weight:700">${esc(resultLabel(pa.result))}</span></span>
+          <span style="color:${pa.rbi > 0 ? '#4ade80' : 'var(--muted)'}">${pa.rbi > 0 ? `+${pa.rbi} RBI` : ''} ${
+              pa.outs > 0 ? '• 1 Out' : ''
+            }</span>
+        </div>`
+          )
+          .join('')
+      : '<span class="muted" style="font-size:12px;padding:6px">Sin jugadas aún en este partido.</span>';
+
+    $('#livePlayBox').style.display = 'block';
+    $('#liveInningEndPanel').style.display = 'none';
+    $('#liveGameOverPanel').style.display = 'none';
+  }
+
+  function handleSelectPlayResult(action) {
+    liveGameState.selectedPlayResult = action;
+
+    // Regla de especificacion para RBI
+    if (
+      action === 'Strikeout Swinging' ||
+      action === 'Strikeout Looking' ||
+      action === 'Groundout' ||
+      action === 'Flyout' ||
+      action === 'Lineout'
+    ) {
+      liveGameState.selectedRbi = 0;
+    } else if (action === 'Home Run') {
+      if (liveGameState.selectedRbi === 0) liveGameState.selectedRbi = 1;
+    }
+
+    renderLiveGameUI();
+  }
+
+  function handleSelectRbi(rbiNum) {
+    liveGameState.selectedRbi = Number(rbiNum);
+    renderLiveGameUI();
+  }
+
+  function confirmLivePlay() {
+    if (!checkAdmin()) return;
+    const g = liveGameState.game;
+    if (!g) return;
+
+    const isAwayBatting = liveGameState.half === 'away';
+    const battingTeamId = isAwayBatting ? g.away : g.home;
+    const pitchingTeamId = isAwayBatting ? g.home : g.away;
+
+    const lineup = isAwayBatting
+      ? g.awayLineup?.length ? g.awayLineup : teamPlayers(g.away).map(p => p.id)
+      : g.homeLineup?.length ? g.homeLineup : teamPlayers(g.home).map(p => p.id);
+
+    const currentIndex = isAwayBatting ? liveGameState.awayBattingIndex : liveGameState.homeBattingIndex;
+    const batterId = lineup[currentIndex] || teamPlayers(battingTeamId)[0]?.id;
+    const pitcherId = isAwayBatting ? liveGameState.activePitcherHome : liveGameState.activePitcherAway;
+
+    if (!batterId || !pitcherId) {
+      alert('Error: Debe existir un bateador y un lanzador activo.');
+      return;
+    }
+
+    const result = liveGameState.selectedPlayResult || 'Single';
+    const rbi = Number(liveGameState.selectedRbi) || 0;
+    const isOut = result.includes('out') || result.includes('Strikeout');
+    const isHR = result === 'Home Run';
+    const outsInPlay = isOut ? 1 : 0;
+    const runsInPlay = rbi > 0 ? rbi : isHR ? 1 : 0;
+
+    const pa = {
+      id: id(),
+      inning: liveGameState.inning,
+      half: liveGameState.half,
+      batter: batterId,
+      pitcher: pitcherId,
+      result,
+      outs: outsInPlay,
+      rbi,
+      runs: isHR ? 1 : 0,
+      earnedRuns: runsInPlay,
+      timestamp: Date.now()
+    };
+
+    g.batLog = Array.isArray(g.batLog) ? g.batLog : [];
+    g.batLog.push(pa);
+
+    // Actualización automática de carreras en el marcador
+    if (runsInPlay > 0) {
+      if (isAwayBatting) {
+        g.awayScore = (Number(g.awayScore) || 0) + runsInPlay;
+        liveGameState.awayScore = g.awayScore;
+      } else {
+        g.homeScore = (Number(g.homeScore) || 0) + runsInPlay;
+        liveGameState.homeScore = g.homeScore;
+      }
+    }
+
+    // Actualización de outs
+    if (isOut) {
+      liveGameState.outs += 1;
+    }
+
+    // Continuidad del lineup: avanzar al siguiente bateador
+    if (isAwayBatting) {
+      liveGameState.awayBattingIndex = (liveGameState.awayBattingIndex + 1) % (lineup.length || 1);
+    } else {
+      liveGameState.homeBattingIndex = (liveGameState.homeBattingIndex + 1) % (lineup.length || 1);
+    }
+
+    // Reset para el siguiente turno
+    liveGameState.selectedPlayResult = 'Single';
+    liveGameState.selectedRbi = 0;
+
+    // Recalcular estadísticas oficiales
+    recalcStats();
+    save();
+
+    // Comprobar fin de media entrada
+    const maxOuts = g.outsPerInning || 3;
+    if (liveGameState.outs >= maxOuts) {
+      $('#livePlayBox').style.display = 'none';
+      $('#liveInningEndPanel').style.display = 'block';
+      $('#liveInningEndTitle').textContent = `ENTRADA ${liveGameState.inning} (${
+        isAwayBatting ? 'ALTA' : 'BAJA'
+      }) FINALIZADA`;
+      $('#liveInningEndScore').textContent = `${teamName(g.away)} ${g.awayScore} — ${g.homeScore} ${teamName(g.home)}`;
+    } else {
+      renderLiveGameUI();
+    }
+  }
+
+  function advanceToNextInning() {
+    const g = liveGameState.game;
+    if (!g) return;
+
+    liveGameState.outs = 0;
+    $('#liveInningEndPanel').style.display = 'none';
+    $('#livePlayBox').style.display = 'block';
+
+    const maxInnings = g.innings || 7;
+
+    if (liveGameState.half === 'away') {
+      liveGameState.half = 'home';
+    } else {
+      liveGameState.half = 'away';
+      liveGameState.inning += 1;
+
+      if (liveGameState.inning > maxInnings && liveGameState.awayScore !== liveGameState.homeScore) {
+        finishLiveGame(false);
+        return;
+      }
+    }
+
+    renderLiveGameUI();
+  }
+
+  function finishLiveGame(forceClose = true) {
+    const g = liveGameState.game;
+    if (!g) return;
+
+    g.status = 'Finalizado';
+    updateSeriesFromGames();
+    recalcStats();
+    save();
+
+    const winnerId = g.homeScore > g.awayScore ? g.home : g.awayScore > g.homeScore ? g.away : null;
+    const loserId = winnerId === g.home ? g.away : winnerId === g.away ? g.home : null;
+
+    $('#livePlayBox').style.display = 'none';
+    $('#liveInningEndPanel').style.display = 'none';
+    $('#liveGameOverPanel').style.display = 'block';
+    $('#liveGameOverScore').textContent = `${teamName(g.away)} ${g.awayScore} — ${g.homeScore} ${teamName(g.home)}`;
+    $('#liveWinnerLoserBadge').innerHTML = winnerId
+      ? `<b>GANADOR:</b> <span style="color:var(--yellow)">${esc(teamName(winnerId))}</span> • <b>PERDEDOR:</b> ${esc(
+          teamName(loserId)
+        )}`
+      : '<b>RESULTADO:</b> EMPATE';
+
+    if (forceClose) {
+      setTimeout(() => {
+        closeModals();
+        renderAll();
+        show('games');
+      }, 1000);
+    }
+  }
+
+  function openPitcherChangeModal() {
+    const g = liveGameState.game;
+    if (!g) return;
+    const isAwayBatting = liveGameState.half === 'away';
+    const defendingTeamId = isAwayBatting ? g.home : g.away;
+    const players = teamPlayers(defendingTeamId, false, true).concat(teamPlayers(defendingTeamId));
+    const uniquePlayers = players.filter((p, i, a) => a.findIndex(x => x.id === p.id) === i);
+
+    const currentPitcher = isAwayBatting ? liveGameState.activePitcherHome : liveGameState.activePitcherAway;
+
+    $('#livePitcherChangeSelect').innerHTML = uniquePlayers
+      .map(
+        p =>
+          `<option value="${p.id}" ${p.id === currentPitcher ? 'selected' : ''}>${esc(p.name)} (#${esc(
+            p.number || '—'
+          )}) - ${esc(p.position || '')}</option>`
+      )
+      .join('');
+
+    $('#pitcherChangeModal').classList.add('open');
+  }
+
+  function confirmPitcherChange() {
+    const newPitcherId = $('#livePitcherChangeSelect').value;
+    if (!newPitcherId) return;
+
+    if (liveGameState.half === 'away') {
+      liveGameState.activePitcherHome = newPitcherId;
+      liveGameState.game.activePitcherHome = newPitcherId;
+    } else {
+      liveGameState.activePitcherAway = newPitcherId;
+      liveGameState.game.activePitcherAway = newPitcherId;
+    }
+
+    save();
+    $('#pitcherChangeModal').classList.remove('open');
+    renderLiveGameUI();
+  }
+
   function gameStatus(g) {
-    return (g.batLog || []).length ? 'BAT LOG completo' : 'BAT LOG pendiente';
+    return (g.batLog || []).length ? 'BAT LOG activo' : 'BAT LOG pendiente';
   }
 
   function gameHTML(g) {
@@ -1437,7 +2417,8 @@
           <span class="muted">${paCount} apariciones registradas</span>
         </div>
         <div class="actions" style="margin-top:11px">
-          <button class="btn yellow" data-score-game="${g.id}">BAT LOG / iSCORE</button>
+          <button class="btn yellow" data-live-game="${g.id}">⚡ Consola en Vivo</button>
+          <button class="btn" data-score-game="${g.id}">Libro BAT LOG</button>
           <button class="btn admin-only" data-edit-game="${g.id}">Editar</button>
           <button class="btn danger admin-only" data-del-game="${g.id}">Eliminar</button>
         </div>
@@ -1448,8 +2429,10 @@
     const el = $('#gamesList');
     el.innerHTML = db.games.length
       ? db.games.slice().reverse().map(gameHTML).join('')
-      : empty('No hay juegos', 'Registra el primer partido y asígnalo a una temporada.');
+      : empty('No hay juegos', 'Pulsa "+ Crear Partido (Paso a Paso)" para iniciar un juego.');
 
+    $$('[data-live-game]').forEach(b => (b.onclick = () => initLiveGame(b.dataset.liveGame)));
+    $$('[data-score-game]').forEach(b => (b.onclick = () => openScorebook(b.dataset.scoreGame)));
     $$('[data-del-game]').forEach(
       b =>
         (b.onclick = () => {
@@ -1457,7 +2440,7 @@
           const g = getGame(gid);
           requestDoubleDelete(
             `Partido: ${teamName(g?.away)} vs ${teamName(g?.home)}`,
-            'Esta acción eliminará el partido y su BAT LOG.',
+            'Esta acción eliminará el partido y sus eventos de bateo y pitcheo.',
             () => remove('games', gid, 'games')
           );
         })
@@ -1470,7 +2453,6 @@
           prepareGameModal(b.dataset.editGame);
         })
     );
-    $$('[data-score-game]').forEach(b => (b.onclick = () => openScorebook(b.dataset.scoreGame)));
   }
 
   // REGLAS N° 5: GESTIÓN Y ELIMINACIÓN DE TEMPORADAS POR EL ADMINISTRADOR
@@ -1729,45 +2711,265 @@
     $$('[data-open-face]').forEach(b => (b.onclick = () => openFaceoff()));
   }
 
+  // ----------------------------------------------------
+  // LÍDERES OFICIALES DE LA LIGA (ROSMIL LEAGUE 0.2 - REGLAS 23, 24, 33)
+  // ----------------------------------------------------
+  function calculateLeagueLeaders() {
+    const pas = allPAs();
+    const playersWithStats = db.players.map(p => ({
+      p,
+      bat: batterStats(p.id, pas),
+      pitch: pitcherStats(p.id, pas)
+    }));
+
+    // Líder de Bateo (AVG - mínimo 1 AB)
+    const leadersAvg = playersWithStats
+      .filter(x => x.bat.AB > 0)
+      .sort((a, b) => b.bat.AVG - a.bat.AVG || b.bat.H - a.bat.H)
+      .slice(0, 5);
+
+    // Líder de Hits (H)
+    const leadersHits = playersWithStats
+      .filter(x => x.bat.H > 0)
+      .sort((a, b) => b.bat.H - a.bat.H || b.bat.AVG - a.bat.AVG)
+      .slice(0, 5);
+
+    // Líder de Home Runs (HR)
+    const leadersHR = playersWithStats
+      .filter(x => x.bat.HR > 0)
+      .sort((a, b) => b.bat.HR - a.bat.HR || b.bat.RBI - a.bat.RBI)
+      .slice(0, 5);
+
+    // Líder de RBI
+    const leadersRBI = playersWithStats
+      .filter(x => x.bat.RBI > 0)
+      .sort((a, b) => b.bat.RBI - a.bat.RBI || b.bat.H - a.bat.H)
+      .slice(0, 5);
+
+    // Líder de Ponches (SO de pitchers)
+    const leadersSO = playersWithStats
+      .filter(x => isPitcher(x.p) && x.pitch.SO > 0)
+      .sort((a, b) => b.pitch.SO - a.pitch.SO || a.pitch.ERA - b.pitch.ERA)
+      .slice(0, 5);
+
+    // Líder de Victorias (Pitchers con partidos ganados o efectividad destacada)
+    const leadersWins = playersWithStats
+      .filter(x => isPitcher(x.p) && x.pitch.outs >= 3)
+      .sort((a, b) => a.pitch.ERA - b.pitch.ERA || b.pitch.outs - a.pitch.outs)
+      .slice(0, 5);
+
+    return { leadersAvg, leadersHits, leadersHR, leadersRBI, leadersSO, leadersWins };
+  }
+
   function renderLeaders() {
     const el = $('#leadersArea');
+    if (!el) return;
     if (!db.players.length) {
-      el.innerHTML = empty('Sin líderes', 'Registra jugadores y BAT LOG.');
+      el.innerHTML = empty('Sin líderes registrados', 'Registra equipos, jugadores y partidos para calcular los líderes.');
       return;
     }
-    const source = allPAs();
-    const hitters = db.players
-      .map(p => ({ p, s: batterStats(p.id, source) }))
-      .filter(x => x.s.PA > 0)
-      .sort((a, b) => b.s.AVG - a.s.AVG || b.s.H - a.s.H)
-      .slice(0, 10);
 
-    el.innerHTML = hitters.length
-      ? '<h3>Líderes de Bateo — AVG</h3>' +
-        hitters
-          .map(
-            (x, i) => `
-          <div class="gamecard">
-            <div class="head">
-              <div>
-                <b>${i + 1}. <span class="player-link" data-player-id="${x.p.id}">${esc(x.p.name)}</span></b>
-                <div class="muted">
-                  ${
-                    x.p.team
-                      ? `<span class="team-link" data-team-id="${x.p.team}">${esc(teamName(x.p.team))}</span>`
-                      : 'Sin equipo'
-                  }
-                </div>
-              </div>
-              <strong style="font-size:22px;color:var(--yellow)">${fmtAvg(x.s.AVG)}</strong>
-            </div>
-            <div class="muted" style="margin-top:7px">
-              ${x.s.H} Hits • ${x.s.HR} HR • ${x.s.RBI} RBI • ${x.s.SO} SO
-            </div>
+    const { leadersAvg, leadersHits, leadersHR, leadersRBI, leadersSO, leadersWins } = calculateLeagueLeaders();
+
+    const renderLeaderTable = (title, items, valueFmt) => `
+      <div class="panel">
+        <div class="head">
+          <h3 style="color:var(--yellow);margin:0;font-size:16px">${title}</h3>
+        </div>
+        ${
+          items.length
+            ? `
+          <div class="tablewrap" style="margin-top:8px">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:40px">#</th>
+                  <th>Jugador</th>
+                  <th>Equipo</th>
+                  <th style="text-align:right">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${items
+                  .map(
+                    (x, idx) => `
+                  <tr>
+                    <td><b>${idx + 1}</b></td>
+                    <td>
+                      ${x.p.photo ? `<img class="avatar" src="${x.p.photo}" alt="">` : ''}
+                      <span class="player-link" data-player-id="${x.p.id}">${esc(x.p.name)}</span>
+                    </td>
+                    <td>
+                      ${
+                        x.p.team
+                          ? `<span class="team-link" data-team-id="${x.p.team}">${esc(teamName(x.p.team))}</span>`
+                          : '<span class="muted">—</span>'
+                      }
+                    </td>
+                    <td style="text-align:right"><b style="color:var(--yellow);font-size:15px">${valueFmt(x)}</b></td>
+                  </tr>`
+                  )
+                  .join('')}
+              </tbody>
+            </table>
           </div>`
-          )
-          .join('')
-      : empty('Sin líderes', 'Aún no hay BAT LOG registrados.');
+            : empty('Sin datos aún', 'Aún no hay jugadas registradas para esta categoría.')
+        }
+      </div>
+    `;
+
+    el.innerHTML = `
+      <div class="grid2">
+        ${renderLeaderTable('👑 Líder de Bateo (AVG)', leadersAvg, x => fmtAvg(x.bat.AVG))}
+        ${renderLeaderTable('💥 Líder de Hits (H)', leadersHits, x => `${x.bat.H} H`)}
+        ${renderLeaderTable('🚀 Líder de Home Runs (HR)', leadersHR, x => `${x.bat.HR} HR`)}
+        ${renderLeaderTable('🎯 Líder de Carreras Impulsadas (RBI)', leadersRBI, x => `${x.bat.RBI} RBI`)}
+        ${renderLeaderTable('🛑 Líder de Ponches Monticulares (SO)', leadersSO, x => `${x.pitch.SO} SO`)}
+        ${renderLeaderTable('🛡️ Líderes de Pitcheo / Efectividad (ERA)', leadersWins, x => `ERA ${x.pitch.ERA.toFixed(2)}`)}
+      </div>
+    `;
+  }
+
+  // ----------------------------------------------------
+  // RANKING GENERAL DE JUGADORES (ROSMIL LEAGUE 0.2 - REGLAS 25, 34, 40)
+  // ----------------------------------------------------
+  function calculatePlayerRanking() {
+    const pas = allPAs();
+    return db.players
+      .map(p => {
+        const bs = batterStats(p.id, pas);
+        const ps = pitcherStats(p.id, pas);
+        const hasB = bs.PA > 0;
+        const hasP = ps.outs > 0;
+
+        let rawScore = 0;
+        if (hasB) {
+          rawScore += (bs.AVG * 260) + (bs.H * 4) + (bs.D * 3) + (bs.T * 5) + (bs.HR * 8) + (bs.RBI * 4) + (bs.R * 2) + (bs.SB * 3) - (bs.SO * 0.5);
+        }
+        if (hasP) {
+          rawScore += (ps.SO * 4) + (ps.outs * 1.5) - (ps.ER * 5) - (ps.BB * 2);
+        }
+
+        const score = hasB || hasP ? Math.min(99, Math.max(50, Math.round(52 + rawScore * 0.35))) : 0;
+
+        return {
+          player: p,
+          bat: bs,
+          pitch: ps,
+          score,
+          rawScore,
+          hasAction: hasB || hasP
+        };
+      })
+      .sort((a, b) => b.rawScore - a.rawScore || b.score - a.score);
+  }
+
+  function renderRanking() {
+    const el = $('#rankingArea');
+    if (!el) return;
+
+    const ranking = calculatePlayerRanking();
+    if (!ranking.length) {
+      el.innerHTML = empty('Sin jugadores clasificados', 'Crea jugadores y registra partidos oficiales en la liga.');
+      return;
+    }
+
+    const top3 = ranking.slice(0, 3);
+
+    el.innerHTML = `
+      <!-- Podio de Honor -->
+      <div class="ranking-podium">
+        ${top3
+          .map((r, idx) => {
+            const medals = ['🥇 #1 ORO', '🥈 #2 PLATA', '🥉 #3 BRONCE'];
+            return `
+            <div class="podium-card ${idx === 0 ? 'first' : ''}">
+              <div class="podium-rank">${medals[idx]}</div>
+              <div class="podium-avatar">
+                ${
+                  r.player.photo
+                    ? `<img src="${r.player.photo}" alt="${esc(r.player.name)}">`
+                    : '👤'
+                }
+              </div>
+              <div class="podium-name">
+                <span class="player-link" data-player-id="${r.player.id}">${esc(r.player.name)}</span>
+              </div>
+              <div class="muted" style="font-size:12px;margin-bottom:8px">
+                ${
+                  r.player.team
+                    ? `<span class="team-link" data-team-id="${r.player.team}">${esc(teamName(r.player.team))}</span>`
+                    : 'Agente Libre'
+                }
+              </div>
+              <div class="podium-score">${r.score} <small style="font-size:12px;color:var(--muted)">SCORE</small></div>
+              <div class="muted" style="font-size:11px;margin-top:6px">
+                ${r.bat.PA > 0 ? `${fmtAvg(r.bat.AVG)} AVG • ${r.bat.HR} HR • ${r.bat.RBI} RBI` : ''}
+                ${r.pitch.outs > 0 ? ` • ${r.pitch.IP} IP • ${r.pitch.SO} SO` : ''}
+              </div>
+            </div>`;
+          })
+          .join('')}
+      </div>
+
+      <!-- Tabla Completa del Ranking -->
+      <div class="panel" style="margin-top:20px">
+        <div class="head">
+          <h3>Tabla Oficial del Ranking General</h3>
+          <span class="muted">${ranking.length} atletas registrados</span>
+        </div>
+        <div class="tablewrap">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:50px">Puesto</th>
+                <th>Jugador</th>
+                <th>Equipo Actual</th>
+                <th>Posición</th>
+                <th>AVG</th>
+                <th>H</th>
+                <th>HR</th>
+                <th>RBI</th>
+                <th>IP / SO</th>
+                <th>ADN Rating</th>
+                <th>Acción</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${ranking
+                .map(
+                  (r, i) => `
+                <tr>
+                  <td><b>#${i + 1}</b></td>
+                  <td>
+                    ${r.player.photo ? `<img class="avatar" src="${r.player.photo}" alt="">` : ''}
+                    <span class="player-link" data-player-id="${r.player.id}">${esc(r.player.name)}</span>
+                  </td>
+                  <td>
+                    ${
+                      r.player.team
+                        ? `<span class="team-link" data-team-id="${r.player.team}">${esc(teamName(r.player.team))}</span>`
+                        : '<span class="muted">—</span>'
+                    }
+                  </td>
+                  <td>${esc(r.player.position || '—')}</td>
+                  <td><b>${fmtAvg(r.bat.AVG)}</b></td>
+                  <td>${r.bat.H}</td>
+                  <td>${r.bat.HR}</td>
+                  <td>${r.bat.RBI}</td>
+                  <td>${r.pitch.outs > 0 ? `${r.pitch.IP} / ${r.pitch.SO}K` : '—'}</td>
+                  <td><span class="ranking-score-pill">${r.score} PTS</span></td>
+                  <td>
+                    <button class="btn btn-sm yellow" data-player-id="${r.player.id}">Ver ADN</button>
+                  </td>
+                </tr>`
+                )
+                .join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
   }
 
   function renderHistory() {
@@ -1926,6 +3128,7 @@
     renderStandings();
     renderStats();
     renderLeaders();
+    renderRanking();
     renderHistory();
     renderHomeGames();
     renderAdminPanel();
@@ -2416,9 +3619,16 @@
       f.role.value =
         p.role ||
         (p.isPitcher && p.isBatter ? 'two-way' : p.isPitcher ? 'pitcher' : 'batter');
+      if (f.isPitcherChoice) {
+        f.isPitcherChoice.value = p.isPitcherChoice || (isPitcher(p) ? 'yes' : 'no');
+      }
       if (p.photo) {
         $('#playerPreview').src = p.photo;
         $('#playerPreview').style.display = 'block';
+      }
+    } else {
+      if (f.isPitcherChoice) {
+        f.isPitcherChoice.value = 'no';
       }
     }
 
@@ -2789,6 +3999,7 @@
       const pid = f.get('id') || id();
       let p = db.players.find(x => x.id === pid);
       const role = f.get('role');
+      const isPitcherChoice = f.get('isPitcherChoice') || (role === 'pitcher' ? 'yes' : 'no');
       const newTeam = f.get('team');
 
       const finish = photo => {
@@ -2818,7 +4029,8 @@
           age: f.get('age'),
           height: f.get('height'),
           weight: f.get('weight'),
-          isPitcher: role === 'pitcher' || role === 'two-way',
+          isPitcherChoice,
+          isPitcher: isPitcherChoice === 'yes' || role === 'pitcher' || role === 'two-way',
           isBatter: role === 'batter' || role === 'two-way',
           pitchTypes: [...e.target.querySelectorAll('[name="pitchType"]:checked')].map(x => x.value),
           photo: photo !== null ? photo : p.photo || ''
@@ -3021,6 +4233,158 @@
       renderScorebook(g);
       save();
     });
+
+    // --------------------------------------------------
+    // EVENTOS: ASISTENTE DE PARTIDOS (ROSMIL LEAGUE 0.2 - WIZARD)
+    // --------------------------------------------------
+    if ($('#btnOpenGameWizard')) {
+      $('#btnOpenGameWizard').addEventListener('click', openGameWizard);
+    }
+
+    // Inning buttons en Paso 2
+    $$('.btn-inning-opt').forEach(btn => {
+      btn.addEventListener('click', () => {
+        $$('.btn-inning-opt').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        wizardState.innings = Number(btn.dataset.innings);
+        if ($('#wizCustomInnings')) $('#wizCustomInnings').value = '';
+      });
+    });
+
+    if ($('#wizCustomInnings')) {
+      $('#wizCustomInnings').addEventListener('input', e => {
+        const val = Number(e.target.value);
+        if (val > 0) {
+          $$('.btn-inning-opt').forEach(b => b.classList.remove('active'));
+          wizardState.innings = val;
+        }
+      });
+    }
+
+    // Paso 1 -> 2
+    if ($('#wizBtnStep1')) {
+      $('#wizBtnStep1').addEventListener('click', () => {
+        const name = $('#wizGameName').value.trim();
+        const season = $('#wizGameSeason').value;
+        const date = $('#wizGameDate').value;
+        if (!season || !date) {
+          alert('Por favor selecciona una temporada/competencia y una fecha para el partido.');
+          return;
+        }
+        wizardState.gameName = name;
+        wizardState.season = season;
+        wizardState.date = date;
+        wizardState.time = $('#wizGameTime').value;
+        wizardState.stadium = $('#wizGameStadium').value;
+        setWizardStep(2);
+      });
+    }
+
+    // Paso 2 Atrás / Siguiente
+    if ($('#wizBackBtn2')) $('#wizBackBtn2').addEventListener('click', () => setWizardStep(1));
+    if ($('#wizBtnStep2')) {
+      $('#wizBtnStep2').addEventListener('click', () => {
+        wizardState.outsPerInning = Number($('#wizOutsPerInning').value) || 3;
+        setWizardStep(3);
+      });
+    }
+
+    // Paso 3 Atrás / Siguiente
+    if ($('#wizBackBtn3')) $('#wizBackBtn3').addEventListener('click', () => setWizardStep(2));
+    if ($('#wizBtnStep3')) {
+      $('#wizBtnStep3').addEventListener('click', () => {
+        const h = $('#wizHomeTeam').value;
+        const a = $('#wizAwayTeam').value;
+        if (!h || !a || h === a) {
+          alert('Debes seleccionar un Equipo Local y un Equipo Visitante diferentes.');
+          return;
+        }
+        wizardState.homeTeam = h;
+        wizardState.awayTeam = a;
+        setWizardStep(4);
+      });
+    }
+
+    // Paso 4: Lineup Local
+    if ($('#wizBackBtn4')) $('#wizBackBtn4').addEventListener('click', () => setWizardStep(3));
+    if ($('#btnAutoOrderHome')) {
+      $('#btnAutoOrderHome').addEventListener('click', () => {
+        autoFillBattingOrder(wizardState.homeTeam, wizardState.homeBattingOrder, 'homeOrderList');
+      });
+    }
+    if ($('#wizBtnStep4')) {
+      $('#wizBtnStep4').addEventListener('click', () => {
+        if (!wizardState.homeBattingOrder.filter(Boolean).length) {
+          autoFillBattingOrder(wizardState.homeTeam, wizardState.homeBattingOrder, 'homeOrderList');
+        }
+        setWizardStep(5);
+      });
+    }
+
+    // Paso 5: Lineup Visitante
+    if ($('#wizBackBtn5')) $('#wizBackBtn5').addEventListener('click', () => setWizardStep(4));
+    if ($('#btnAutoOrderAway')) {
+      $('#btnAutoOrderAway').addEventListener('click', () => {
+        autoFillBattingOrder(wizardState.awayTeam, wizardState.awayBattingOrder, 'awayOrderList');
+      });
+    }
+    if ($('#wizBtnStep5')) {
+      $('#wizBtnStep5').addEventListener('click', () => {
+        if (!wizardState.awayBattingOrder.filter(Boolean).length) {
+          autoFillBattingOrder(wizardState.awayTeam, wizardState.awayBattingOrder, 'awayOrderList');
+        }
+        setWizardStep(6);
+      });
+    }
+
+    // Paso 6: Resumen y Lanzar Juego
+    if ($('#wizBackBtn6')) $('#wizBackBtn6').addEventListener('click', () => setWizardStep(5));
+    if ($('#wizBtnStartGame')) {
+      $('#wizBtnStartGame').addEventListener('click', startLiveGameFromWizard);
+    }
+
+    // --------------------------------------------------
+    // EVENTOS: CONSOLA EN VIVO ULTRA-RÁPIDA (ROSMIL LEAGUE 0.2)
+    // --------------------------------------------------
+    $$('.btn-play-action').forEach(btn => {
+      btn.addEventListener('click', () => {
+        handleSelectPlayResult(btn.dataset.action);
+      });
+    });
+
+    $$('.btn-rbi-opt').forEach(btn => {
+      btn.addEventListener('click', () => {
+        handleSelectRbi(btn.dataset.rbi);
+      });
+    });
+
+    if ($('#btnConfirmLivePlay')) {
+      $('#btnConfirmLivePlay').addEventListener('click', confirmLivePlay);
+    }
+
+    if ($('#btnLiveNextInning')) {
+      $('#btnLiveNextInning').addEventListener('click', advanceToNextInning);
+    }
+
+    if ($('#btnLiveCloseGameOver')) {
+      $('#btnLiveCloseGameOver').addEventListener('click', () => finishLiveGame(true));
+    }
+
+    if ($('#btnLiveChangePitcher')) {
+      $('#btnLiveChangePitcher').addEventListener('click', openPitcherChangeModal);
+    }
+
+    if ($('#btnConfirmPitcherChange')) {
+      $('#btnConfirmPitcherChange').addEventListener('click', confirmPitcherChange);
+    }
+
+    if ($('#btnLiveFinishGameEarly')) {
+      $('#btnLiveFinishGameEarly').addEventListener('click', () => {
+        if (confirm('¿Deseas finalizar este partido inmediatamente y registrar el resultado oficial actual?')) {
+          finishLiveGame(true);
+        }
+      });
+    }
 
     // NAVEGACIÓN GLOBAL POR CLICKS (REGLAS 13 Y 14)
     document.addEventListener('click', e => {

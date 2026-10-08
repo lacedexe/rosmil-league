@@ -1,195 +1,170 @@
-# ⚾ ROSMIL LEAGUE 0.1 — Plataforma Oficial de Gestión & iSCORE de Béisbol
+# ⚾ ROSMIL LEAGUE 0.2 — Plataforma Oficial de Béisbol
 
 <p align="center">
   <img src="assets/rosmil-logo.png" alt="ROSMIL Baseball League" width="220">
 </p>
 
 <p align="center">
-  <b>Sistema integral para la administración de torneos, temporadas, franquicias, rosters reales, perfiles estadísticos tipo Baseball-Reference, comparación entre equipos y anotación jugada a jugada (BAT LOG / iSCORE).</b>
+  <b>SISTEMA DE PARTIDOS, LINEUPS, ESTADÍSTICAS, RBI, LÍDERES Y ADN</b><br>
+  <i>"Tú registras el juego. Nosotros hacemos las estadísticas."</i>
 </p>
 
 ---
 
-## 📌 Tabla de Contenidos
-1. [Novedades en ROSMIL LEAGUE 0.1](#-novedades-en-rosmil-league-01)
-2. [Identidad Visual Oficial](#-identidad-visual-oficial)
-3. [Filosofía Central del Sistema](#-filosofía-central-del-sistema)
-4. [Estructura del Proyecto](#-estructura-del-proyecto)
-5. [Módulos y Funcionalidades](#-módulos-y-funcionalidades)
-   - [Seguridad y Control de Acceso (Modo Administrador vs Espectador)](#1-seguridad-y-control-de-acceso)
-   - [Perfiles de Equipos y Roster Real](#2-perfiles-de-equipos-y-roster-real)
-   - [Comparador de Equipos y Mejor Rival](#3-comparador-de-equipos-y-mejor-rival)
-   - [Perfiles Estadísticos de Jugadores (Estilo Baseball-Reference)](#4-perfiles-estadísticos-de-jugadores)
-   - [Sistema de Doble Confirmación](#5-sistema-de-doble-confirmación)
-   - [Navegación Global Clickeable](#6-navegación-global-clickeable)
-   - [Temporadas y Playoffs](#7-temporadas-y-playoffs)
-   - [Tabla de Posiciones (Standings)](#8-tabla-de-posiciones-standings)
-   - [Juegos y Calendario](#9-juegos-y-calendario)
-   - [Anotador Oficial (BAT LOG / iSCORE)](#10-anotador-oficial-bat-log--iscore)
-   - [Líderes de la Liga y Sabermetría](#11-líderes-de-la-liga-y-sabermetría)
-6. [Fórmulas y Métricas Implementadas](#-fórmulas-y-métricas-implementadas)
-7. [Conexión en la Nube con Firebase](#-conexión-con-firebase-base-de-datos-en-la-nube)
-8. [Cómo Ejecutar el Proyecto](#-cómo-ejecutar-el-proyecto)
+## 📌 Principio Central de ROSMIL LEAGUE 0.2
+
+> **"EL ADMINISTRADOR SOLO REGISTRA LO QUE PASÓ. ROSMIL LEAGUE CALCULA Y ACTUALIZA TODO LO DEMÁS."**
+
+ROSMIL LEAGUE 0.2 elimina por completo la complejidad innecesaria de los scorebooks tradicionales:
+- ❌ **Sin conteo de bolas**
+- ❌ **Sin conteo de strikes**
+- ❌ **Sin conteo manual de lanzamientos**
+- ❌ **Sin formularios complejos ni hojas de cálculo**
+- ❌ **Sin seleccionar manualmente al bateador ni escribir marcadores**
+
+Por cada turno al bate, la interacción se reduce a:
+1. **¿Qué sucedió?** (`HIT` | `DOBLE` | `TRIPLE` | `HOME RUN` | `PONCHE` | `OUT`)
+2. **¿Cuántas carreras remolcó?** (`0` | `1` | `2` | `3` | `4` RBI)
+3. **Confirmar** ➔ El sistema calcula estadísticas, outs, carreras, actualiza líderes, ranking y ADN, y pasa de forma automática al siguiente bateador.
 
 ---
 
-## 🌟 Novedades en ROSMIL LEAGUE 0.1
+## 🌟 Novedades Principales en la Versión 0.2
 
-La versión **0.1** incorpora una actualización estructural profunda:
-* **Rosters Reales por Equipo:** Cada jugador pertenece de forma estricta a un equipo asignado (`p.team === teamId`). Si es transferido, el cambio se actualiza inmediatamente en el equipo actual y se preserva el historial en `teamHistory` sin perder estadísticas pasadas.
-* **Sistema de Roles y Control de Acceso:** Modo **Espectador** (lectura general) y Modo **Administrador** protegido con PIN (por defecto `admin123`). Únicamente el Administrador puede crear, editar o eliminar temporadas, equipos, atletas o partidos. Las mutaciones son validadas en la interfaz y en el motor lógico.
-* **Perfiles Completos de Franquicia:** Cada equipo cuenta con su propia vista detallada que incluye récord automático (`G - P`, `PCT`, carreras anotadas, permitidas y diferencial), roster de atletas y listado de juegos.
-* **Comparador Head-to-Head:** Herramienta interactiva para enfrentar dos equipos, ver su balance histórico directo, tendencia reciente y detectar de forma automática al **"Mejor Rival"** (el equipo contra el cual tiene mejor porcentaje de victorias).
-* **Perfiles Estadísticos de Jugadores (Baseball-Reference Style):** Estadísticas desglosadas por temporada y acumuladas de carrera, selector interactivo `[ BATEO ] [ PITCHEO ]`, enlace directo a su equipo actual, historial de equipos y resumen de actuación en su último partido.
-* **Doble Confirmación Obligatoria:** Modal de dos pasos antes de ejecutar cualquier eliminación de temporadas, equipos, jugadores, juegos o jugadas.
-* **Navegación Fluida:** Todos los nombres de jugadores y equipos en cualquier vista (tablas, clasificaciones, resultados, BAT LOG) son clickeables y abren su perfil al instante.
+### 1. Asistente de Creación de Partido (Wizard de 6 Pasos)
+La creación del partido se divide en páginas independientes con navegación guiada:
+* **Paso 1 — Datos Generales:** Nombre del partido, competencia/temporada, fecha, hora y estadio.
+* **Paso 2 — Configuración del Partido:** Selección interactiva de cantidad de entradas (1 al 9 o personalizado) y límite de outs por media entrada (por defecto: 3).
+* **Paso 3 — Selección de Equipos:** Definición de Equipo Local (*Home Team*) y Equipo Visitante (*Away Team*), estableciendo automáticamente el orden del partido (visitante batea en la parte alta; local batea en la parte baja).
+* **Paso 4 — Lineup del Equipo Local:** Campo de béisbol interactivo para situar las 9 posiciones en el diamante (`CF`, `LF`, `RF`, `SS`, `2B`, `3B`, `1B`, `P`, `C`) y tabla de orden de bateo del 1 al 9 con botón de autocompletado rápido.
+* **Paso 5 — Lineup del Equipo Visitante:** Mismo sistema visual sobre el diamante y orden de bateo oficial para el equipo visitante.
+* **Paso 6 — Confirmación y Resumen Oficial:** Tarjeta de verificación completa y botón destacado **`⚾ INICIAR PARTIDO ➔`**.
+
+---
+
+### 2. Consola de Partido en Vivo (Ultra-Rápida y Visual)
+Una interfaz táctil diseñada para operar a pie de campo sin fricción:
+* **Marcador Superior Dinámico:** Muestra carreras de ambos equipos, estado de bateo ("AL BATE" vs "DEFENSIVA") e indicadores luminosos para los 3 outs de la entrada.
+* **Tarjeta de Matchup Activo:** Identifica automáticamente al bateador en turno (según su orden en el lineup) frente al lanzador activo en el montículo.
+* **Botones Gigantes de Acción:** Selección con un toque de `HIT`, `DOBLE`, `TRIPLE`, `HOME RUN`, `PONCHE` y `OUT`.
+* **Selector Rápido de RBI:** Botones dedicados de `0`, `1`, `2`, `3` y `4` carreras impulsadas. Al seleccionar `PONCHE` u `OUT`, el sistema preselecciona inteligentemente `0 RBI`; en `HOME RUN`, preselecciona `1 RBI`.
+* **Continuidad Estricta del Lineup (Regla 26):** El orden al bate nunca se reinicia en el jugador #1 al comenzar una nueva entrada. Si una entrada concluye con el bateador #5, la siguiente entrada para ese equipo inicia automáticamente con el bateador #6.
+* **Control Automático de Outs y Fin de Entrada:** Al registrarse el 3er out, se activa la pantalla de transición **`ENTRADA FINALIZADA`** mostrando el marcador parcial y el botón **`SIGUIENTE ENTRADA ➔`**.
+* **Sustitución Inmediata de Lanzador:** Botón **`🔄 Cambiar Pitcher`** disponible en todo momento para relevar al lanzador activo sin detener el flujo del juego.
+* **Final del Partido:** Al completarse los innings o al pulsar "Finalizar Partido", el sistema proclama al ganador y perdedor y actualiza en cadena toda la base de datos.
+
+---
+
+### 3. ADN del Jugador & Scouting Report Oficial
+Cada perfil de atleta cuenta con una sección sabermétrica dinámica inspirada en videojuegos deportivos:
+* **Métricas para Bateadores:**
+  * 🎯 **Contacto:** Basado en promedio de bateo oficial (AVG) y ratio de hits.
+  * 💥 **Poder:** Derivado de cuadrangulares (HR), extrabases y slugging (SLG).
+  * 🎯 **Producción:** Eficiencia impulsando carreras (RBI) y carreras anotadas.
+  * 🛡️ **Consistencia:** Disciplina en el plato y control de ponches.
+  * 🧤 **Defensa:** Asignado según posición defensiva principal.
+  * 🔥 **Clutch:** Productividad con corredores y situaciones definitorias.
+  * ⚡ **Velocidad:** Basado en bases robadas oficiales.
+* **Métricas para Lanzadores:**
+  * 🎯 **Control:** Comando de zona y baja tasa de boletos.
+  * 🛑 **Ponches:** Ratio de strikeouts conseguidos por outs registrados.
+  * 🛡️ **Efectividad (ERA):** Desempeño de carreras limpias permitidas.
+  * 🔒 **Dominio (WHIP):** Control de tráfico en bases.
+  * ⏳ **Resistencia:** Volumen de entradas lanzadas.
+* **Regla Fundamental (Reglas 32 y 39 - No Inventar Estadísticas):** Si un jugador no cuenta con turnos o entradas registradas, el sistema no inventa números y despliega el indicador transparente **`DATOS INSUFICIENTES`**.
+* **Diagnóstico de Scouting:** Detección automática de **Fortalezas Principales** (atributos élite) y **Áreas de Desarrollo**.
+
+---
+
+### 4. Líderes de la Liga y Clasificación Automática
+Sección de líderes actualizada de inmediato tras cada jugada registrada:
+* 👑 **Líder de Bateo (AVG)**
+* 💥 **Líder de Hits (H)**
+* 🚀 **Líder de Home Runs (HR)**
+* 🎯 **Líder de Carreras Impulsadas (RBI)**
+* 🛑 **Líder de Ponches Monticulares (SO)**
+* 🛡️ **Líderes de Pitcheo / Efectividad (ERA)**
+
+---
+
+### 5. Ranking General de Atletas (Podio de Honor)
+Fórmula de valoración integral que pondera el rendimiento ofensivo, defensivo, monticular y logros deportivos:
+* **Podio Visual:** Tarjetas destacadas para **#1 ORO 🥇**, **#2 PLATA 🥈** y **#3 BRONCE 🥉** con foto, equipo, puntaje de ADN y líneas principales.
+* **Tabla de Clasificación General:** Ranking completo de toda la liga con acceso directo con un clic al ADN de cada deportista.
 
 ---
 
 ## 🎨 Identidad Visual Oficial
 
-El diseño sigue una paleta cromática deportiva de alto contraste y legibilidad óptima:
-* **Verde Institucional / Verde Oscuro (`#06190f` / `#0d2818`):** Fondo principal y base de toda la aplicación.
-* **Amarillo Dorado (`#facc15`):** Encabezados importantes, títulos de sección, tarjetas principales, acentos destacados y badges.
-* **Blanco Nítido (`#ffffff`):** Tipografía principal, números estadísticos, tablas de métricas y datos de alto impacto.
+* **Verde Institucional / Diamante (`#06190f` / `#0d2818`):** Fondo principal y estética de estadio nocturno.
+* **Amarillo Dorado (`#facc15`):** Acentos, botones de confirmación, podio, indicadores destacados y títulos.
+* **Blanco Puro (`#ffffff`):** Tipografía principal, números de marcador y estadísticas sabermétricas.
 
 ---
 
-## 🧠 Filosofía Central del Sistema
-
-> **"El marcador define quién gana; el BAT LOG define la historia y las estadísticas."**
-
-1. **El marcador general** (`homeScore` vs `awayScore`) alimenta la tabla de posiciones, los récords de los equipos y las series de playoffs.
-2. **Las estadísticas individuales de jugadores** proceden de las apariciones al plato registradas en el módulo **BAT LOG / iSCORE**.
-3. **No se inventan datos:** Si no hay partidos registrados para un jugador o equipo, el sistema muestra honestamente `0` o `-` sin datos ficticios.
-
----
-
-## 📁 Estructura del Proyecto
+## 📁 Arquitectura del Código
 
 ```text
 rosmilLeague/
 │
-├── index.html            # Estructura semántica, vistas de perfil, modales de seguridad y PIN
-├── README.md             # Documentación completa de ROSMIL LEAGUE 0.1
-├── README.txt            # Resumen en texto plano
+├── index.html            # Vistas principales, modal del Wizard (Pasos 1-6), Consola en Vivo y Ranking
+├── README.md             # Documentación exhaustiva de ROSMIL LEAGUE 0.2
+├── README.txt            # Ficha técnica resumida
 │
 ├── assets/
-│   └── rosmil-logo.png   # Logotipo oficial del programa
+│   └── rosmil-logo.png   # Logotipo oficial
 │
 ├── css/
-│   └── style.css         # Identidad visual (verde, amarillo, blanco), componentes y perfiles
+│   └── style.css         # Diamante interactivo, luces de outs, barras animadas de ADN, podio y estilos
 │
 └── js/
-    ├── firebase-config.js # Configuración y credenciales de Cloud Firestore
-    └── app.js             # Motor de cálculo sabermétrico, perfiles, seguridad y eventos
+    ├── firebase-config.js # Configuración de Google Cloud Firestore
+    └── app.js             # Motor central de cálculo, live scoring, continuidad de lineup, ranking y ADN
 ```
 
 ---
 
-## 🚀 Módulos y Funcionalidades
-
-### 1. Seguridad y Control de Acceso
-- **Botón de Modo en la Barra Superior:** Permite alternar entre `👁️ Modo Espectador` y `🛡️ Modo Administrador`.
-- **Autenticación con PIN:** Para pasar a modo Administrador se solicita un PIN de seguridad (por defecto `admin123`, personalizable en la configuración).
-- **Protección Visual y Lógica:**
-  - En modo Espectador se ocultan visualmente todos los botones de creación, edición y eliminación.
-  - Si se intenta invocar una función de guardado o borrado desde código o consola, el sistema rechaza la operación informando que solo el Administrador tiene permisos.
-
-### 2. Perfiles de Equipos y Roster Real
-- Al hacer clic en cualquier equipo se abre su perfil con:
-  - Logo oficial, nombre y ciudad.
-  - **Récord Oficial:** Victorias, Derrotas, PCT, Carreras Anotadas (RS), Carreras Permitidas (RA) y Diferencial (+/-).
-  - **Roster Actual:** Lista de jugadores asignados con dorsal, posición, rol y enlace a sus perfiles.
-  - **Historial de Partidos:** Encuentros disputados por el equipo con resultados finales.
-
-### 3. Comparador de Equipos y Mejor Rival
-- Dentro del perfil de cada equipo se incluye un selector para elegir un rival y compararlos:
-  - **Récord General:** Comparativa de victorias, derrotas y efectividad de ambos.
-  - **Historial Directo (Versus):** Partidos disputados entre ellos, victorias de cada uno, carreras anotadas y carreras permitidas.
-  - **Mejor Rival Detectado:** Cálculo automático del equipo frente al cual tiene mejores resultados históricos (mínimo 1 juego disputado).
-
-### 4. Perfiles Estadísticos de Jugadores
-- Vista inspirada en Baseball-Reference:
-  - Foto, número de dorsal, posición habitual, lado de bateo y tiro.
-  - Enlace al **Equipo Actual** con navegación directa.
-  - **Historial de Equipos (`teamHistory`):** Tabla con las temporadas y los equipos en los que ha militado.
-  - **Selector [ BATEO ] [ PITCHEO ]:** Permite alternar entre métricas ofensivas y de lanzador en atletas de rol lanzador o Two-Way.
-  - **Líneas por Temporada y Totales de Carrera:** Tablas completas con todas las categorías ofensivas y de pitcheo calculadas a partir del BAT LOG.
-  - **Resumen del Último Partido:**
-    - Bateo: Turnos oficiales, hits (ej. `4-2`), HR, RBI, R, etc.
-    - Pitcheo: Entradas lanzadas, carreras limpias, ponches, boletos y efectividad del encuentro.
-
-### 5. Sistema de Doble Confirmación
-- Toda acción de borrado requiere pasar por dos confirmaciones en modal:
-  1. **Paso 1:** Alerta inicial con opción de Cancelar o Continuar.
-  2. **Paso 2:** Advertencia de impacto permanente con botón explícito **"ELIMINAR DEFINITIVAMENTE"**.
-
-### 6. Navegación Global Clickeable
-- Cualquier nombre de jugador o equipo que aparezca en el sistema (tablas, partidos, líderes, alineaciones) es interactivo (`.player-link` y `.team-link`) y abre su perfil correspondiente.
-
-### 7. Temporadas y Playoffs
-- Creación y edición de temporadas regulares y playoffs al mejor de 3, 5 o 7 juegos.
-- Soporte para eliminación de temporadas exclusivo para el administrador con doble confirmación.
-
-### 8. Tabla de Posiciones (Standings)
-- Tabla oficial ordenada por porcentaje de victorias (`PCT = G / (G + P)`).
-
-### 9. Juegos y Calendario
-- Programación de encuentros por temporada, estadio y fecha con acceso directo al anotador oficial.
-
-### 10. Anotador Oficial (BAT LOG / iSCORE)
-- Registro turno por turno de apariciones al plato con outs, carreras, impulsadas, bases robadas y lanzamientos decisivos.
-
-### 11. Líderes de la Liga y Sabermetría
-- Ranking dinámico de mejores bateadores y lanzadores según sus métricas acumuladas.
-
----
-
-## 📊 Fórmulas y Métricas Implementadas
+## 📊 Fórmulas y Métricas Sabermétricas
 
 ### Métricas Ofensivas
-| Sigla | Nombre | Fórmula / Criterio |
+| Métrica | Definición | Fórmula |
 |---|---|---|
-| **PA** | Plate Appearances | Total de apariciones al plato registradas |
-| **AB** | At Bats (Turnos Oficiales) | `PA - (BB + HBP + SF + SH)` |
-| **H** | Hits | `Sencillos + Dobles + Triples + Home Runs` |
-| **TB** | Total Bases | `(1B × 1) + (2B × 2) + (3B × 3) + (HR × 4)` |
-| **AVG** | Batting Average (Promedio) | `H / AB` (mostrado en formato `.000`) |
-| **OBP** | On-Base Percentage | `(H + BB + HBP) / (AB + BB + HBP + SF)` |
-| **SLG** | Slugging Percentage | `TB / AB` |
+| **PA** | Apariciones al Plato | Total de turnos al bate registrados en la consola |
+| **AB** | Turnos Oficiales | `PA - (BB + HBP + SF + SH)` |
+| **H** | Hits Conectados | `Sencillos + Dobles + Triples + Cuadrangulares` |
+| **TB** | Bases Totales | `(1B × 1) + (2B × 2) + (3B × 3) + (HR × 4)` |
+| **AVG** | Promedio de Bateo | `H / AB` (formato `.000`) |
+| **SLG** | Slugging | `TB / AB` |
 | **OPS** | On-Base Plus Slugging | `OBP + SLG` |
-| **K%** | Strikeout Rate | `SO / PA` |
+| **RBI** | Carreras Impulsadas | Suma de registros oficiales `0-4 RBI` |
 
 ### Métricas de Pitcheo
-| Sigla | Nombre | Fórmula / Criterio |
+| Métrica | Definición | Fórmula |
 |---|---|---|
-| **BF** | Batters Faced | Total de bateadores enfrentados |
-| **IP** | Innings Pitched | `(Outs ÷ 3) . (Outs % 3)` (ej. 5.1 = 5 entradas y 1 tercio) |
-| **ERA** | Earned Run Average (Efectividad) | `(ER × 27) / Outs` (base a 9 innings) |
-| **WHIP** | Walks + Hits per Inning | `((BB + H) × 9) / Outs` |
+| **BF** | Bateadores Enfrentados | Total de turnos registrados frente al pitcher |
+| **IP** | Entradas Lanzadas | `(Outs ÷ 3) . (Outs % 3)` (ej. 4.2 entradas) |
+| **SO** | Ponches Conectados | Total de strikeouts producidos |
+| **ERA** | Efectividad | `(ER × 27) / Outs` (base estándar 9 entradas) |
+| **WHIP** | Baserunners por Entrada | `((BB + H) × 9) / Outs` |
 
 ---
 
-## 🔥 Conexión con Firebase (Base de Datos en la Nube)
+## ☁️ Sincronización en la Nube (Firebase & Offline-First)
 
-Arquitectura **híbrida (Offline-First + Cloud Realtime Sync)**:
-- **Almacenamiento Local:** Funciona sin internet vía `LocalStorage`.
-- **Sincronización en la Nube:** Conectado a **Cloud Firestore** para actualizar cambios en tiempo real entre múltiples dispositivos.
-- Configuración en el archivo `js/firebase-config.js`.
+* **Almacenamiento Local Seguro (`LocalStorage`):** Garantiza que todos los datos persistan sin conexión a internet.
+* **Cloud Firestore:** Sincronización en tiempo real. Cualquier jugada confirmada en la consola se propaga al instante a todos los dispositivos conectados.
 
 ---
 
-## 💻 Cómo Ejecutar el Proyecto
+## 🚀 Puesta en Marcha
 
-1. Abre la carpeta del proyecto en tu equipo:
+1. Abre el directorio del proyecto:
    ```text
    c:\Users\pinai\Documents\antigravity\rosmilLeague
    ```
-2. Abre `index.html` en tu navegador web.
-3. Para acceder a las funciones administrativas, haz clic en **`👁️ Modo Espectador`** en la esquina superior e ingresa el PIN `admin123`.
+2. Ejecuta `index.html` en tu navegador.
+3. Para iniciar la creación y gestión de partidos, inicia sesión como **Administrador** pulsando el botón superior con el PIN `admin123`.
 
 ---
 
-*ROSMIL LEAGUE 0.1 — Diseñado para la excelencia del béisbol.*
-
+*ROSMIL LEAGUE 0.2 — Plataforma Oficial de Béisbol.*
