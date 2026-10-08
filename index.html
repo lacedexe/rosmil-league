@@ -26,7 +26,6 @@
       <nav id="nav">
         <button data-view="home" class="active">⌂ &nbsp; Inicio</button>
         <button data-view="season">▣ &nbsp; Temporada</button>
-        <button data-view="standings">◆ &nbsp; Posiciones</button>
         <button data-view="games">⚾ &nbsp; Juegos</button>
         <button data-view="teams">♙ &nbsp; Equipos</button>
         <button data-view="players">◎ &nbsp; Jugadores</button>
@@ -106,23 +105,20 @@
         <section id="season" class="view">
           <div class="panel">
             <div class="head">
-              <h2>Temporadas</h2>
-              <button class="btn yellow admin-only" data-modal="seasonModal">+ Crear temporada</button>
+              <h2>Temporadas de la Liga</h2>
+              <div class="actions">
+                <button class="btn yellow admin-only" id="btnOpenSeasonWizard">⚡ + Crear Temporada (Paso a Paso)</button>
+                <button class="btn admin-only" data-modal="seasonModal">+ Rápido</button>
+              </div>
             </div>
-            <p class="muted">Aquí defines si la competencia es Liga o Eliminatoria. Los partidos y sus BAT LOG se registran después en Juegos.</p>
+            <p class="muted">Haz clic en cualquier temporada para ver sus partidos, posiciones (si es Liga), cuadro de eliminatoria, flyer oficial y premios.</p>
             <div id="seasonList"></div>
           </div>
         </section>
 
-        <!-- View: Posiciones -->
-        <section id="standings" class="view">
-          <div class="panel">
-            <div class="head">
-              <h2>Posiciones</h2>
-              <span class="muted">Se calculan a partir de los juegos con marcador final.</span>
-            </div>
-            <div id="standingsList"></div>
-          </div>
+        <!-- View: Perfil Interactivo de Temporada (Requisitos 12, 13, 14 y 15) -->
+        <section id="seasonProfile" class="view">
+          <div id="seasonProfileArea"></div>
         </section>
 
         <!-- View: Juegos -->
@@ -135,9 +131,29 @@
                 <button class="btn admin-only" data-modal="gameModal">+ Registro Manual</button>
               </div>
             </div>
-            <div class="notice info">
-              <b>ROSMIL LEAGUE 0.3:</b> Sistema interactivo con Estadio 2D en vivo, fotos reales de perfil en las bases, Play-by-Play, Replay y recuperación automática ante recargas.
+            
+            <!-- Buscador y Filtro de Partidos (Requisitos 16 y 17) -->
+            <div class="games-filter-bar">
+              <div class="filter-field">
+                <label>Temporada:</label>
+                <select id="gamesFilterSeason">
+                  <option value="">Todas las temporadas</option>
+                </select>
+              </div>
+              <div class="filter-field">
+                <label>Día / Fecha:</label>
+                <input type="date" id="gamesFilterDate">
+              </div>
+              <div class="filter-field">
+                <label>Buscar Equipo:</label>
+                <input type="text" id="gamesFilterTeam" placeholder="Ej. Tigres, Leones...">
+              </div>
+              <button type="button" class="btn btn-sm" id="btnResetGamesFilter">✕ Limpiar Filtros</button>
             </div>
+            <div class="games-filter-status" id="gamesFilterStatus">
+              Mostrando los <b>últimos 10 juegos</b> registrados. Usa los filtros para consultar partidos anteriores.
+            </div>
+
             <!-- Banner de Partido en Vivo Activo -->
             <div id="activeLiveGameBanner" class="active-live-banner" style="display:none">
               <div class="banner-left">
@@ -198,12 +214,18 @@
           </div>
         </section>
 
-        <!-- View: Ranking General de Jugadores -->
+        <!-- View: Ranking General de Jugadores (Requisito 6: Bateadores y Lanzadores separados) -->
         <section id="ranking" class="view">
           <div class="panel">
             <div class="head">
-              <h2>👑 Ranking General de Jugadores</h2>
-              <span class="muted">Clasificación ponderada automática basada en rendimiento, bateo, pitcheo y logros</span>
+              <div>
+                <h2>👑 Ranking Oficial ROSMIL LEAGUE</h2>
+                <span class="muted">Clasificación ponderada calculada estrictamente a partir de partidos y estadísticas reales</span>
+              </div>
+              <div class="ranking-tab-buttons" id="rankingTabButtons">
+                <button type="button" class="btn tab-btn active" data-ranking-tab="batters">⚾ BATEADORES</button>
+                <button type="button" class="btn tab-btn" data-ranking-tab="pitchers">🔥 LANZADORES</button>
+              </div>
             </div>
             <div id="rankingArea"></div>
           </div>
@@ -419,6 +441,182 @@
     </div>
   </div>
 
+  <!-- Modal: Wizard de Creación de Temporada Paso a Paso (Requisitos 13, 14 y 15) -->
+  <div class="modal" id="seasonWizardModal">
+    <div class="modalbox large wizard-box">
+      <div class="wizard-header">
+        <div class="eyebrow" style="color:var(--yellow)">ROSMIL LEAGUE • NUEVA TEMPORADA</div>
+        <h2>Asistente de Configuración de Temporada</h2>
+        <div class="wizard-steps-nav">
+          <div class="wiz-step-pill active" id="swPill1">1. Información</div>
+          <div class="wiz-step-pill" id="swPill2">2. Formato</div>
+          <div class="wiz-step-pill" id="swPill3">3. Configuración</div>
+          <div class="wiz-step-pill" id="swPill4">4. Equipos</div>
+          <div class="wiz-step-pill" id="swPill5">5. Resumen</div>
+        </div>
+      </div>
+
+      <!-- PASO 1: INFORMACIÓN GENERAL -->
+      <div class="wizard-page" id="swPage1">
+        <div class="wizard-page-title">
+          <h3>Paso 1 — Información General</h3>
+          <p class="muted">Ingresa los datos principales de la temporada y sube su flyer o imagen oficial.</p>
+        </div>
+        <div class="formgrid">
+          <div class="field">
+            <label>Nombre de la Temporada</label>
+            <input type="text" id="swName" placeholder="Ej. ROSMIL LEAGUE 2026" required>
+          </div>
+          <div class="field">
+            <label>Año de Competencia</label>
+            <input type="number" id="swYear" value="2026" min="2020" max="2035">
+          </div>
+          <div class="field">
+            <label>Fecha de Inicio</label>
+            <input type="date" id="swStart">
+          </div>
+          <div class="field">
+            <label>Fecha de Fin</label>
+            <input type="date" id="swEnd">
+          </div>
+          <div class="field" style="grid-column: 1 / -1">
+            <label>Flyer / Imagen Oficial de la Temporada</label>
+            <div class="uploadbox">
+              <input type="file" id="swFlyerFile" accept="image/*">
+              <img id="swFlyerPreview" class="preview" style="display:none; max-height:160px; object-fit:contain;" alt="Vista previa flyer">
+            </div>
+            <small class="muted" style="margin-top:4px; display:block">Este flyer aparecerá como portada interactiva en la página oficial de la temporada.</small>
+          </div>
+          <div class="field" style="grid-column: 1 / -1">
+            <label>Descripción / Observaciones</label>
+            <textarea id="swDesc" rows="2" placeholder="Ej. Torneo oficial con fase de todos contra todos y postemporada de eliminación directa."></textarea>
+          </div>
+        </div>
+        <div class="formactions" style="margin-top:24px">
+          <button type="button" class="btn close">Cancelar</button>
+          <button type="button" class="btn yellow" id="swBtnStep1">CONTINUAR ➔</button>
+        </div>
+      </div>
+
+      <!-- PASO 2: FORMATO DE COMPETICIÓN -->
+      <div class="wizard-page" id="swPage2" style="display:none">
+        <div class="wizard-page-title">
+          <h3>Paso 2 — Formato de Competición</h3>
+          <p class="muted">¿Qué formato tendrá esta temporada?</p>
+        </div>
+        <div class="format-cards-grid">
+          <label class="format-option-card active" id="cardFormatLeague">
+            <input type="radio" name="swFormat" value="league" checked>
+            <div class="format-card-icon">📊</div>
+            <b>A. FASE DE LIGA</b>
+            <p>Fase regular de todos contra todos. Genera automáticamente <b>Tabla de Posiciones</b> oficial.</p>
+          </label>
+          <label class="format-option-card" id="cardFormatElimination">
+            <input type="radio" name="swFormat" value="elimination">
+            <div class="format-card-icon">⚔️</div>
+            <b>B. ELIMINATORIA DIRECTA</b>
+            <p>Torneo por llaves o playoffs. <b>Sin tabla de posiciones</b>, con Cuadro Eliminatorio por rondas.</p>
+          </label>
+          <label class="format-option-card" id="cardFormatBoth">
+            <input type="radio" name="swFormat" value="both">
+            <div class="format-card-icon">🏆</div>
+            <b>C. LIGA + ELIMINATORIA</b>
+            <p>Fase clasificatoria de liga con <b>Posiciones</b> y posterior clasificación a <b>Cuadro de Playoffs</b>.</p>
+          </label>
+        </div>
+        <div class="formactions" style="margin-top:24px">
+          <button type="button" class="btn" id="swBackBtn2">← Anterior</button>
+          <button type="button" class="btn yellow" id="swBtnStep2">CONTINUAR ➔</button>
+        </div>
+      </div>
+
+      <!-- PASO 3: CONFIGURACIÓN DETALLADA DE FASES -->
+      <div class="wizard-page" id="swPage3" style="display:none">
+        <div class="wizard-page-title">
+          <h3>Paso 3 — Configuración de Fases</h3>
+          <p class="muted">Configura los parámetros específicos del formato seleccionado.</p>
+        </div>
+        
+        <!-- Bloque Liga -->
+        <div id="swLeagueConfigBlock" class="panel" style="margin-bottom:18px">
+          <h4 style="color:var(--yellow);margin-bottom:12px">Configuración de Fase de Liga</h4>
+          <div class="formgrid">
+            <div class="field">
+              <label>Cantidad aproximada de juegos por equipo</label>
+              <input type="number" id="swLeagueGamesPerTeam" value="10" min="1" max="162">
+            </div>
+            <div class="field">
+              <label>Sistema de Clasificación</label>
+              <select id="swPointsSystem">
+                <option value="winLoss">Porcentaje de Victorias (W-L %)</option>
+                <option value="points">Puntos (2 pts victoria, 1 pt empate)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bloque Eliminatoria / Playoffs -->
+        <div id="swElimConfigBlock" class="panel" style="display:none; margin-bottom:18px">
+          <h4 style="color:var(--yellow);margin-bottom:12px">Configuración de Eliminatoria / Playoffs</h4>
+          <div class="formgrid">
+            <div class="field">
+              <label>Equipos que clasifican a la Eliminatoria</label>
+              <select id="swTeamsQualifying">
+                <option value="8">8 Equipos (Cuartos de Final ➔ Semifinal ➔ Final)</option>
+                <option value="4" selected>4 Equipos (Semifinal ➔ Final)</option>
+                <option value="2">2 Equipos (Final Directa)</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Formato de Series en Playoffs</label>
+              <select id="swPlayoffSeriesFormat">
+                <option value="1">A 1 Partido (Eliminación súbita)</option>
+                <option value="3" selected>Al mejor de 3 juegos (Gana quien logre 2)</option>
+                <option value="5">Al mejor de 5 juegos (Gana quien logre 3)</option>
+                <option value="7">Al mejor de 7 juegos (Gana quien logre 4)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="formactions" style="margin-top:24px">
+          <button type="button" class="btn" id="swBackBtn3">← Anterior</button>
+          <button type="button" class="btn yellow" id="swBtnStep3">CONTINUAR ➔</button>
+        </div>
+      </div>
+
+      <!-- PASO 4: SELECCIÓN DE EQUIPOS -->
+      <div class="wizard-page" id="swPage4" style="display:none">
+        <div class="wizard-page-title">
+          <h3>Paso 4 — Equipos Participantes</h3>
+          <p class="muted">Selecciona los equipos que formarán parte de esta temporada.</p>
+        </div>
+        <div class="head" style="margin-bottom:10px">
+          <span class="muted" id="swTeamsSelectedCount">0 equipos seleccionados</span>
+          <button type="button" class="btn btn-sm" id="swBtnSelectAllTeams">Seleccionar Todos</button>
+        </div>
+        <div class="sw-teams-grid" id="swTeamsListCheckboxes"></div>
+        <div class="formactions" style="margin-top:24px">
+          <button type="button" class="btn" id="swBackBtn4">← Anterior</button>
+          <button type="button" class="btn yellow" id="swBtnStep4">CONTINUAR ➔</button>
+        </div>
+      </div>
+
+      <!-- PASO 5: RESUMEN Y CUADRO PREVISTO -->
+      <div class="wizard-page" id="swPage5" style="display:none">
+        <div class="wizard-page-title">
+          <h3>Paso 5 — Resumen Oficial y Cuadro</h3>
+          <p class="muted">Revisa toda la estructura antes de crear la temporada en el sistema.</p>
+        </div>
+        <div id="swSummaryArea" class="wiz-summary-card"></div>
+        <div class="formactions" style="margin-top:26px">
+          <button type="button" class="btn" id="swBackBtn5">← Anterior</button>
+          <button type="button" class="btn yellow btn-large-start" id="swBtnCreateSeason">🏆 CREAR TEMPORADA ➔</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal: Serie Playoff -->
   <div class="modal" id="seriesModal">
     <div class="modalbox small">
@@ -473,7 +671,7 @@
             <label>Fecha</label>
             <input name="date" type="date" required>
           </div>
-          <div class="field">
+          <div class="field" style="display:none">
             <label>Hora</label>
             <input name="time" type="time">
           </div>
@@ -690,7 +888,7 @@
             <label>Fecha</label>
             <input type="date" id="wizGameDate" required>
           </div>
-          <div class="field">
+          <div class="field" style="display:none">
             <label>Hora</label>
             <input type="time" id="wizGameTime">
           </div>
@@ -920,7 +1118,7 @@
   <!-- Modal: Consola de Partido en Vivo (ROSMIL LEAGUE 0.3 - Ultra Rápida con Estadio 2D) -->
   <div class="modal" id="liveGameModal">
     <div class="modalbox large live-game-console">
-      <!-- Marcador Principal Superior -->
+      <!-- Marcador Principal Superior con R - H - E (Requisito 10) -->
       <div class="live-scoreboard">
         <div class="live-team away">
           <div class="live-team-flag" id="liveAwayLogo">⚾</div>
@@ -941,6 +1139,35 @@
               <span class="out-dot" id="outDot3" title="Out 3"></span>
             </div>
           </div>
+          
+          <!-- Tabla R - H - E Oficial en Vivo (Requisito 10) -->
+          <div class="live-rhe-box">
+            <table class="rhe-table">
+              <thead>
+                <tr>
+                  <th>EQ</th>
+                  <th>C (R)</th>
+                  <th>H</th>
+                  <th>E</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr id="liveRheRowAway">
+                  <td class="rhe-team-lbl" id="liveRheAwayTeam">VIS</td>
+                  <td class="rhe-val r" id="liveRheAwayR">0</td>
+                  <td class="rhe-val h" id="liveRheAwayH">0</td>
+                  <td class="rhe-val e" id="liveRheAwayE">0</td>
+                </tr>
+                <tr id="liveRheRowHome">
+                  <td class="rhe-team-lbl" id="liveRheHomeTeam">LOC</td>
+                  <td class="rhe-val r" id="liveRheHomeR">0</td>
+                  <td class="rhe-val h" id="liveRheHomeH">0</td>
+                  <td class="rhe-val e" id="liveRheHomeE">0</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
           <button type="button" class="btn btn-sm btn-subtle" id="btnLiveChangePitcher">🔄 Cambiar Pitcher</button>
         </div>
 
@@ -956,7 +1183,7 @@
 
       <!-- Layout Central: Estadio 2D + Controles del Partido -->
       <div class="live-console-grid">
-        <!-- Columna Izquierda: Mapa 2D del Estadio con Fotos Reales en las Bases -->
+        <!-- Columna Izquierda: Mapa 2D del Estadio con Fotos Reales en las Bases y Defensivos -->
         <div class="live-stadium-card">
           <div class="stadium-card-header">
             <span>⚾ DIAMANTE 2D EN VIVO</span>
@@ -968,14 +1195,47 @@
             <div class="stadium-outfield-turf"></div>
             <div class="stadium-warning-strip"></div>
             
-            <!-- Posiciones de Jardineros -->
-            <span class="stadium-pos-tag cf">CF</span>
-            <span class="stadium-pos-tag lf">LF</span>
-            <span class="stadium-pos-tag rf">RF</span>
-            <span class="stadium-pos-tag ss">SS</span>
-            <span class="stadium-pos-tag b2">2B</span>
-            <span class="stadium-pos-tag b3">3B</span>
-            <span class="stadium-pos-tag b1">1B</span>
+            <!-- Posiciones Defensivas con Fotos Reales (Requisitos 1 y 5) -->
+            <div class="stadium-fielder-node cf" id="liveFielderCF" data-pos="CF">
+              <div class="fielder-avatar-slot" id="liveFielderAvatarCF"></div>
+              <span class="fielder-pos-pill">CF</span>
+              <span class="fielder-name-pill" id="liveFielderNameCF">CF</span>
+            </div>
+            <div class="stadium-fielder-node lf" id="liveFielderLF" data-pos="LF">
+              <div class="fielder-avatar-slot" id="liveFielderAvatarLF"></div>
+              <span class="fielder-pos-pill">LF</span>
+              <span class="fielder-name-pill" id="liveFielderNameLF">LF</span>
+            </div>
+            <div class="stadium-fielder-node rf" id="liveFielderRF" data-pos="RF">
+              <div class="fielder-avatar-slot" id="liveFielderAvatarRF"></div>
+              <span class="fielder-pos-pill">RF</span>
+              <span class="fielder-name-pill" id="liveFielderNameRF">RF</span>
+            </div>
+            <div class="stadium-fielder-node ss" id="liveFielderSS" data-pos="SS">
+              <div class="fielder-avatar-slot" id="liveFielderAvatarSS"></div>
+              <span class="fielder-pos-pill">SS</span>
+              <span class="fielder-name-pill" id="liveFielderNameSS">SS</span>
+            </div>
+            <div class="stadium-fielder-node b2" id="liveFielder2B" data-pos="2B">
+              <div class="fielder-avatar-slot" id="liveFielderAvatar2B"></div>
+              <span class="fielder-pos-pill">2B</span>
+              <span class="fielder-name-pill" id="liveFielderName2B">2B</span>
+            </div>
+            <div class="stadium-fielder-node b3" id="liveFielder3B" data-pos="3B">
+              <div class="fielder-avatar-slot" id="liveFielderAvatar3B"></div>
+              <span class="fielder-pos-pill">3B</span>
+              <span class="fielder-name-pill" id="liveFielderName3B">3B</span>
+            </div>
+            <div class="stadium-fielder-node b1" id="liveFielder1B" data-pos="1B">
+              <div class="fielder-avatar-slot" id="liveFielderAvatar1B"></div>
+              <span class="fielder-pos-pill">1B</span>
+              <span class="fielder-name-pill" id="liveFielderName1B">1B</span>
+            </div>
+            <div class="stadium-fielder-node c" id="liveFielderC" data-pos="C">
+              <div class="fielder-avatar-slot" id="liveFielderAvatarC"></div>
+              <span class="fielder-pos-pill">C</span>
+              <span class="fielder-name-pill" id="liveFielderNameC">C</span>
+            </div>
 
             <!-- Infield Arcilla y Césped Interior -->
             <div class="stadium-clay-diamond"></div>
@@ -985,10 +1245,11 @@
             <div class="stadium-foul-line foul-left"></div>
             <div class="stadium-foul-line foul-right"></div>
 
-            <!-- Montículo de Lanzador (Pitcher) -->
+            <!-- Montículo de Lanzador (Pitcher con Foto Real) -->
             <div class="stadium-mound">
               <div class="mound-rubber"></div>
               <div class="stadium-pitcher-badge" id="liveMoundPitcherBadge" title="Pitcher en montículo">
+                <div class="pitcher-avatar-slot" id="livePitcherMoundAvatar"></div>
                 <span class="mound-tag">P</span>
                 <span class="mound-name" id="liveMoundPitcherName">Pitcher</span>
               </div>
@@ -1207,7 +1468,9 @@
       </div>
 
       <!-- Linescore Table (Inning por Inning) -->
-      <div class="linescore-wrap" id="replayLinescoreWrap"></div>
+      <div class="linescore-wrap" id="replayLinescoreWrap">
+        <table class="linescore-table" id="replayLinescoreTable"></table>
+      </div>
 
       <!-- Cuerpo Principal del Replay -->
       <div class="replay-grid-body">
@@ -1222,13 +1485,48 @@
             <!-- Outfield & Diamond structure -->
             <div class="stadium-outfield-turf"></div>
             <div class="stadium-warning-strip"></div>
-            <span class="stadium-pos-tag cf">CF</span>
-            <span class="stadium-pos-tag lf">LF</span>
-            <span class="stadium-pos-tag rf">RF</span>
-            <span class="stadium-pos-tag ss">SS</span>
-            <span class="stadium-pos-tag b2">2B</span>
-            <span class="stadium-pos-tag b3">3B</span>
-            <span class="stadium-pos-tag b1">1B</span>
+
+            <!-- Posiciones Defensivas con Fotos Reales (Requisitos 1 y 5) -->
+            <div class="stadium-fielder-node cf" id="replayFielderCF" data-pos="CF">
+              <div class="fielder-avatar-slot" id="replayFielderAvatarCF"></div>
+              <span class="fielder-pos-pill">CF</span>
+              <span class="fielder-name-pill" id="replayFielderNameCF">CF</span>
+            </div>
+            <div class="stadium-fielder-node lf" id="replayFielderLF" data-pos="LF">
+              <div class="fielder-avatar-slot" id="replayFielderAvatarLF"></div>
+              <span class="fielder-pos-pill">LF</span>
+              <span class="fielder-name-pill" id="replayFielderNameLF">LF</span>
+            </div>
+            <div class="stadium-fielder-node rf" id="replayFielderRF" data-pos="RF">
+              <div class="fielder-avatar-slot" id="replayFielderAvatarRF"></div>
+              <span class="fielder-pos-pill">RF</span>
+              <span class="fielder-name-pill" id="replayFielderNameRF">RF</span>
+            </div>
+            <div class="stadium-fielder-node ss" id="replayFielderSS" data-pos="SS">
+              <div class="fielder-avatar-slot" id="replayFielderAvatarSS"></div>
+              <span class="fielder-pos-pill">SS</span>
+              <span class="fielder-name-pill" id="replayFielderNameSS">SS</span>
+            </div>
+            <div class="stadium-fielder-node b2" id="replayFielder2B" data-pos="2B">
+              <div class="fielder-avatar-slot" id="replayFielderAvatar2B"></div>
+              <span class="fielder-pos-pill">2B</span>
+              <span class="fielder-name-pill" id="replayFielderName2B">2B</span>
+            </div>
+            <div class="stadium-fielder-node b3" id="replayFielder3B" data-pos="3B">
+              <div class="fielder-avatar-slot" id="replayFielderAvatar3B"></div>
+              <span class="fielder-pos-pill">3B</span>
+              <span class="fielder-name-pill" id="replayFielderName3B">3B</span>
+            </div>
+            <div class="stadium-fielder-node b1" id="replayFielder1B" data-pos="1B">
+              <div class="fielder-avatar-slot" id="replayFielderAvatar1B"></div>
+              <span class="fielder-pos-pill">1B</span>
+              <span class="fielder-name-pill" id="replayFielderName1B">1B</span>
+            </div>
+            <div class="stadium-fielder-node c" id="replayFielderC" data-pos="C">
+              <div class="fielder-avatar-slot" id="replayFielderAvatarC"></div>
+              <span class="fielder-pos-pill">C</span>
+              <span class="fielder-name-pill" id="replayFielderNameC">C</span>
+            </div>
 
             <div class="stadium-clay-diamond"></div>
             <div class="stadium-inner-turf"></div>
@@ -1238,6 +1536,7 @@
             <div class="stadium-mound">
               <div class="mound-rubber"></div>
               <div class="stadium-pitcher-badge" id="replayMoundPitcherBadge">
+                <div class="pitcher-avatar-slot" id="replayPitcherMoundAvatar"></div>
                 <span class="mound-tag">P</span>
                 <span class="mound-name" id="replayMoundPitcherName">Pitcher</span>
               </div>
@@ -1298,20 +1597,22 @@
           </div>
         </div>
 
-        <!-- Panel Derecho: Highlights Inteligentes, MVP y Play-by-Play -->
+        <!-- Panel Derecho: Información de Jugada Actual, MVP y Play-by-Play Completo -->
         <div class="replay-sidebar">
+          <!-- Detalle de la Jugada Actual Reconstruida -->
+          <div class="replay-current-play-card" id="replayCurrentPlayCard">
+            <h4>⚾ DETALLE DE LA JUGADA</h4>
+            <div id="replayCurrentPlayDetail" class="current-play-detail-box">
+              <div class="muted">Selecciona una jugada para ver los detalles.</div>
+            </div>
+          </div>
+
           <!-- MVP Oficial del Partido Calculado -->
           <div class="replay-mvp-card" id="replayMvpArea"></div>
 
-          <!-- Resumen Inteligente: Jugadas Destacadas -->
-          <div class="replay-highlights-panel">
-            <h4>🌟 JUGADAS DESTACADAS</h4>
-            <div class="highlights-list" id="replayHighlightsList"></div>
-          </div>
-
-          <!-- Play-by-Play Completo -->
+          <!-- Play-by-Play Completo de TODAS las jugadas (Requisito 9) -->
           <div class="replay-pbp-panel">
-            <h4>📋 PLAY-BY-PLAY DETALLADO</h4>
+            <h4>📋 TODAS LAS JUGADAS DEL PARTIDO</h4>
             <div class="pbp-events-scroll" id="replayPbpList"></div>
           </div>
         </div>

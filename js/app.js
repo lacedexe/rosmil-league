@@ -96,6 +96,42 @@
     speed: 1 // 0.5x, 1x, 2x
   };
 
+  // Estado adicional para Rankings separados, Temporadas interactivas y Filtro de Juegos
+  let activeRankingTab = 'batters'; // 'batters' | 'pitchers'
+  let activeSeasonId = null;
+  let activeSeasonTab = 'summary'; // 'summary' | 'games' | 'standings' | 'bracket' | 'awards' | 'teams'
+  let gamesFilter = {
+    season: '',
+    date: '',
+    team: ''
+  };
+  let seasonWizardState = {
+    step: 1,
+    name: '',
+    year: 2026,
+    start: '',
+    end: '',
+    flyer: '',
+    desc: '',
+    format: 'league', // 'league' | 'elimination' | 'both'
+    leagueGamesPerTeam: 10,
+    pointsSystem: 'winLoss',
+    teamsQualifying: 4,
+    playoffSeriesFormat: 3,
+    selectedTeamIds: []
+  };
+
+  // Helper de formato de Fecha limpia (Requisito 17: Eliminar hora, solo DD/MM/YYYY)
+  function fmtDate(dateStr) {
+    if (!dateStr) return '—';
+    const clean = String(dateStr).split('T')[0].trim();
+    const parts = clean.split('-');
+    if (parts.length === 3 && parts[0].length === 4) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    return clean;
+  }
+
   // Load persisted state
   try {
     const saved = localStorage.getItem(KEY);
@@ -648,7 +684,8 @@
       history: 'Historial',
       admin: 'Administración',
       teamProfile: 'Perfil de Equipo',
-      playerProfile: 'Perfil de Jugador'
+      playerProfile: 'Perfil de Jugador',
+      seasonProfile: 'Perfil de Temporada'
     };
     $('#pageTitle').textContent = names[view] || view;
     renderAll();
@@ -1275,6 +1312,45 @@
       seasonsMap[sId].push(pa);
     });
 
+    // REQUISITO 14: Premios ganados por el jugador en temporadas
+    const playerSeasonAwards = [];
+    db.seasons.forEach(s => {
+      const aw = calculateSeasonAwards(s.id);
+      if (!aw) return;
+      if (aw.mvp?.player?.id === p.id) {
+        playerSeasonAwards.push({
+          season: s,
+          trophy: '🏆',
+          name: 'MEJOR JUGADOR DEL CAMPEONATO (MVP)',
+          detail: `${aw.mvp.score} PTS • ${aw.mvp.bat.H} H, ${aw.mvp.bat.HR} HR, ${aw.mvp.bat.RBI} RBI • ${aw.mvp.gamesPlayed} PJ`
+        });
+      }
+      if (aw.hitsLeader?.player?.id === p.id) {
+        playerSeasonAwards.push({
+          season: s,
+          trophy: '🏆',
+          name: 'PETE ROSE — LÍDER DE HITS',
+          detail: `${aw.hitsLeader.hits} Hits Conectados (${fmtAvg(aw.hitsLeader.stats.AVG)} AVG)`
+        });
+      }
+      if (aw.hrLeader?.player?.id === p.id) {
+        playerSeasonAwards.push({
+          season: s,
+          trophy: '🏆',
+          name: 'HANK AARON — LÍDER DE HOME RUNS',
+          detail: `${aw.hrLeader.hr} Cuadrangulares (${aw.hrLeader.stats.RBI} RBI)`
+        });
+      }
+      if (aw.cyYoung?.player?.id === p.id) {
+        playerSeasonAwards.push({
+          season: s,
+          trophy: '🏆',
+          name: 'CY YOUNG — MEJOR LANZADOR',
+          detail: `${aw.cyYoung.ip} IP, ${aw.cyYoung.so} SO, ERA ${aw.cyYoung.era}`
+        });
+      }
+    });
+
     const hasPitching = isPitcher(p);
 
     el.innerHTML = `
@@ -1342,7 +1418,7 @@
                 }
               </div>
               <div class="muted" style="margin-top:6px;font-size:12px">
-                Juego: <b>${esc(teamName(lastGame.game.away))} vs ${esc(teamName(lastGame.game.home))}</b> • Fecha: ${esc(
+                Juego: <b>${esc(teamName(lastGame.game.away))} vs ${esc(teamName(lastGame.game.home))}</b> • Fecha: 📅 ${fmtDate(
                 lastGame.game.date
               )} • Marcador: ${lastGame.game.awayScore} - ${lastGame.game.homeScore}
               </div>
@@ -1351,6 +1427,36 @@
             : '<span class="muted">El jugador aún no tiene apariciones registradas en partidos oficiales.</span>'
         }
       </div>
+
+      <!-- REQUISITO 14: Premios Oficiales Obtenidos por Temporada -->
+      ${
+        playerSeasonAwards.length
+          ? `
+        <div class="panel" style="margin-top:16px;border-color:var(--yellow)">
+          <div class="head">
+            <h4 style="color:var(--yellow);margin:0">🏆 Premios y Galardones de Temporada Obtenidos</h4>
+            <span class="tag" style="background:var(--yellow);color:#0a1a0e;font-weight:bold">${playerSeasonAwards.length} Galardones</span>
+          </div>
+          <div class="season-awards-grid" style="margin-top:12px">
+            ${playerSeasonAwards
+              .map(
+                a => `
+              <div class="season-award-card">
+                <div class="award-trophy">${a.trophy}</div>
+                <div class="award-title">${a.name}</div>
+                <div style="margin:8px 0;font-size:14px">
+                  <span class="season-link" data-season-id="${a.season.id}" style="color:var(--yellow);font-weight:700;cursor:pointer">
+                    Temporada: ${esc(a.season.name)}
+                  </span>
+                </div>
+                <div class="award-metric">${a.detail}</div>
+              </div>`
+              )
+              .join('')}
+          </div>
+        </div>`
+          : ''
+      }
 
       <!-- SECCIÓN ADN DEL JUGADOR (ROSMIL LEAGUE 0.2) -->
       ${renderPlayerDNASection(p, pPas)}
@@ -1946,7 +2052,7 @@
       <div class="head">
         <div>
           <h3 style="color:var(--yellow);margin:0">${esc(wizardState.gameName || `${aTeam} vs ${hTeam}`)}</h3>
-          <div class="muted">${esc(sName)} • ${esc(wizardState.date)} ${esc(wizardState.time || '')} ${
+          <div class="muted">${esc(sName)} • 📅 ${fmtDate(wizardState.date)} ${
       wizardState.stadium ? '• ' + esc(wizardState.stadium) : ''
     }</div>
         </div>
@@ -2091,18 +2197,104 @@
       }
     }
 
-    const moundSlot = $(`#${prefix}PitcherMoundNode`);
-    if (moundSlot && pitcherId) {
+    // Pitcher en montículo con Foto Real y Nombre (Requisitos 1 y 5)
+    if (pitcherId) {
       const p = db.players.find(x => x.id === pitcherId);
+      const moundName = $(`#${prefix}MoundPitcherName`);
+      const moundAvatar = $(`#${prefix}PitcherMoundAvatar`);
+      const moundBadge = $(`#${prefix}MoundPitcherBadge`);
       if (p) {
-        moundSlot.title = `Lanzador: ${p.name}`;
+        if (moundName) moundName.textContent = (p.name || 'Pitcher').split(' ')[0];
+        if (moundAvatar) {
+          if (p.photo) {
+            moundAvatar.innerHTML = `<img src="${p.photo}" alt="${esc(p.name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='block';"><span class="fielder-avatar-fallback" style="display:none">${(p.name || 'P')[0]}</span>`;
+          } else {
+            moundAvatar.innerHTML = `<span class="fielder-avatar-fallback">${(p.name || 'P')[0]}</span>`;
+          }
+        }
+        if (moundBadge) {
+          moundBadge.dataset.playerId = p.id;
+          moundBadge.title = `Lanzador: ${p.name} • Clic para ver perfil`;
+        }
+      }
+    }
+  }
+
+  // Renderizar Fildeadores Defensivos Reales con Fotos en el Campo 2D (Requisitos 1 y 5)
+  function renderStadiumDefense(prefix, game, half, interveningPos = null) {
+    if (!game) return;
+    const isAwayBatting = half === 'away';
+    const defTeamId = isAwayBatting ? game.home : game.away;
+    const positions = isAwayBatting ? game.homePositions || {} : game.awayPositions || {};
+    const roster = teamPlayers(defTeamId);
+
+    const posList = ['CF', 'LF', 'RF', 'SS', '2B', '3B', '1B', 'C'];
+    posList.forEach((pos, idx) => {
+      const node = $(`#${prefix}Fielder${pos}`);
+      const avatarSlot = $(`#${prefix}FielderAvatar${pos}`);
+      const namePill = $(`#${prefix}FielderName${pos}`);
+      if (!node) return;
+
+      let pid = positions[pos];
+      if (!pid) {
+        const candidate = roster.find(p => p.position === pos) || roster[idx % (roster.length || 1)];
+        pid = candidate?.id;
+      }
+
+      const p = db.players.find(x => x.id === pid);
+      if (p) {
+        node.dataset.playerId = p.id;
+        node.title = `${pos}: ${p.name} (${teamName(defTeamId)}) • Clic para ver perfil`;
+        if (namePill) namePill.textContent = (p.name || pos).split(' ')[0];
+        if (avatarSlot) {
+          if (p.photo) {
+            avatarSlot.innerHTML = `<img src="${p.photo}" alt="${esc(p.name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='block';"><span class="fielder-avatar-fallback" style="display:none">${(p.name || pos)[0]}</span>`;
+          } else {
+            avatarSlot.innerHTML = `<span class="fielder-avatar-fallback">${(p.name || pos)[0]}</span>`;
+          }
+        }
+      } else {
+        node.removeAttribute('data-player-id');
+        if (namePill) namePill.textContent = pos;
+        if (avatarSlot) avatarSlot.innerHTML = `<span class="fielder-avatar-fallback">${pos[0]}</span>`;
+      }
+
+      if (interveningPos === pos) {
+        node.classList.add('active-play');
+      } else {
+        node.classList.remove('active-play');
+      }
+    });
+
+    // Pitcher en montículo
+    const pitcherId = isAwayBatting
+      ? liveGameState?.activePitcherHome || positions.P || roster[0]?.id
+      : liveGameState?.activePitcherAway || positions.P || roster[0]?.id;
+    if (pitcherId) {
+      const p = db.players.find(x => x.id === pitcherId);
+      const moundName = $(`#${prefix}MoundPitcherName`);
+      const moundAvatar = $(`#${prefix}PitcherMoundAvatar`);
+      const moundBadge = $(`#${prefix}MoundPitcherBadge`);
+      if (p) {
+        if (moundName) moundName.textContent = (p.name || 'Pitcher').split(' ')[0];
+        if (moundAvatar) {
+          if (p.photo) {
+            moundAvatar.innerHTML = `<img src="${p.photo}" alt="${esc(p.name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='block';"><span class="fielder-avatar-fallback" style="display:none">${(p.name || 'P')[0]}</span>`;
+          } else {
+            moundAvatar.innerHTML = `<span class="fielder-avatar-fallback">${(p.name || 'P')[0]}</span>`;
+          }
+        }
+        if (moundBadge) {
+          moundBadge.dataset.playerId = p.id;
+          moundBadge.title = `Lanzador: ${p.name} • Clic para ver perfil`;
+        }
       }
     }
   }
 
   function triggerStadiumAnimation(prefix, action, rbi, isHR) {
-    const splash = $(`#${prefix}ActionSplash`);
-    const ball = $(`#${prefix}BallNode`);
+    const splash = $(`#${prefix}StadiumSplash`) || $(`#${prefix}ActionSplash`);
+    const ball = $(`#${prefix}StadiumBall`) || $(`#${prefix}BallNode`);
 
     let text = 'JUGADA';
     let typeClass = 'single';
@@ -2122,33 +2314,41 @@
     } else if (action.includes('Strikeout')) {
       text = '❌ PONCHE (SO)!';
       typeClass = 'strikeout';
-    } else if (action.includes('out')) {
+    } else if (action.includes('out') || action === 'Flyout') {
       text = '🛑 OUT!';
-      typeClass = 'out';
+      typeClass = action === 'Flyout' ? 'flyout' : 'groundout';
     } else if (action === 'Walk' || action === 'HBP') {
       text = '🚶 BASE POR BOLAS';
-      typeClass = 'walk';
-    } else if (action === 'Reached Error') {
+      typeClass = 'single';
+    } else if (action === 'Reached Error' || action === 'Error') {
       text = '⚠️ ERROR DEFENSIVO';
-      typeClass = 'error';
+      typeClass = 'groundout';
     } else if (action === 'Sac Fly' || action === 'Sac Bunt') {
       text = '✈️ SACRIFICIO';
-      typeClass = 'sac';
+      typeClass = 'flyout';
     }
 
     if (splash) {
-      splash.textContent = text;
+      splash.style.display = 'flex';
+      splash.innerHTML = `<div class="splash-text">${text}</div>`;
       splash.className = `stadium-play-splash active ${typeClass}`;
     }
 
     if (ball) {
       ball.className = `stadium-animated-ball active fly-${typeClass}`;
+      ball.style.display = 'block';
     }
 
     setTimeout(() => {
-      if (splash) splash.classList.remove('active');
-      if (ball) ball.className = 'stadium-animated-ball';
-    }, 1100);
+      if (splash) {
+        splash.classList.remove('active');
+        splash.style.display = 'none';
+      }
+      if (ball) {
+        ball.className = 'stadium-animated-ball';
+        ball.style.display = 'none';
+      }
+    }, 1200);
   }
 
   function advanceRunners(currentRunners, result, batterId, explicitRbi = 0) {
@@ -2358,6 +2558,22 @@
     $('#liveAwayScore').textContent = g.awayScore;
     $('#liveHomeScore').textContent = g.homeScore;
 
+    // Calcular y Actualizar Tabla R - H - E en Vivo (Requisito 10)
+    const awayHits = (g.batLog || []).filter(pa => pa.half === 'away' && HIT_RESULTS.has(pa.result)).length;
+    const homeHits = (g.batLog || []).filter(pa => pa.half === 'home' && HIT_RESULTS.has(pa.result)).length;
+    const awayErrors = (g.batLog || []).filter(pa => pa.half === 'home' && (pa.result === 'Reached Error' || pa.result === 'Error')).length;
+    const homeErrors = (g.batLog || []).filter(pa => pa.half === 'away' && (pa.result === 'Reached Error' || pa.result === 'Error')).length;
+
+    if ($('#liveRheAwayTeam')) $('#liveRheAwayTeam').textContent = teamName(g.away).slice(0, 10);
+    if ($('#liveRheAwayR')) $('#liveRheAwayR').textContent = g.awayScore;
+    if ($('#liveRheAwayH')) $('#liveRheAwayH').textContent = awayHits;
+    if ($('#liveRheAwayE')) $('#liveRheAwayE').textContent = awayErrors;
+
+    if ($('#liveRheHomeTeam')) $('#liveRheHomeTeam').textContent = teamName(g.home).slice(0, 10);
+    if ($('#liveRheHomeR')) $('#liveRheHomeR').textContent = g.homeScore;
+    if ($('#liveRheHomeH')) $('#liveRheHomeH').textContent = homeHits;
+    if ($('#liveRheHomeE')) $('#liveRheHomeE').textContent = homeErrors;
+
     if (awayTeamObj?.logo) {
       $('#liveAwayLogo').innerHTML = `<img src="${awayTeamObj.logo}" alt="">`;
     } else {
@@ -2379,8 +2595,12 @@
     $('#outDot2').classList.toggle('active', liveGameState.outs >= 2);
     $('#outDot3').classList.toggle('active', liveGameState.outs >= 3);
 
-    // Bateador Activo
+    // Bateador Activo e Interactivo (Requisito 11)
     $('#liveBatterName').textContent = batter?.name || 'Bateador';
+    if (batter) {
+      $('#liveBatterName').classList.add('player-link');
+      $('#liveBatterName').dataset.playerId = batter.id;
+    }
     $('#liveBatterMeta').textContent = `#${currentIndex + 1} en orden (${teamName(battingTeamId)}) • Pos: ${
       batter?.position || 'DH'
     }`;
@@ -2389,14 +2609,26 @@
     } else {
       $('#liveBatterPhoto').textContent = '👤';
     }
+    if (batter) {
+      $('#liveBatterPhoto').style.cursor = 'pointer';
+      $('#liveBatterPhoto').dataset.playerId = batter.id;
+    }
 
-    // Pitcher Activo
+    // Pitcher Activo e Interactivo (Requisito 11)
     $('#livePitcherName').textContent = pitcher?.name || 'Lanzador';
+    if (pitcher) {
+      $('#livePitcherName').classList.add('player-link');
+      $('#livePitcherName').dataset.playerId = pitcher.id;
+    }
     $('#livePitcherMeta').textContent = `Lanzando por ${teamName(pitchingTeamId)}`;
     if (pitcher?.photo) {
       $('#livePitcherPhoto').innerHTML = `<img src="${pitcher.photo}" alt="">`;
     } else {
       $('#livePitcherPhoto').textContent = '⚾';
+    }
+    if (pitcher) {
+      $('#livePitcherPhoto').style.cursor = 'pointer';
+      $('#livePitcherPhoto').dataset.playerId = pitcher.id;
     }
 
     // Botones de Jugada seleccionada
@@ -2409,8 +2641,9 @@
       b.classList.toggle('active', Number(b.dataset.rbi) === liveGameState.selectedRbi);
     });
 
-    // ACTUALIZAR MAPA 2D DEL ESTADIO CON FOTOS REALES (SECCIONES 1, 2, 3, 5, 8, 9)
+    // ACTUALIZAR MAPA 2D DEL ESTADIO CON FOTOS REALES Y DEFENSA COMPLETA (Requisitos 1 y 5)
     renderStadiumDiamond('live', liveGameState.runners, pitcherId, batterId);
+    renderStadiumDefense('live', g, liveGameState.half);
 
     // Botones de Deshacer y Rehacer
     if ($('#btnLiveUndo')) {
@@ -2438,9 +2671,9 @@
                 <div style="display:flex;align-items:center;gap:8px">
                   ${avatarHTML}
                   <div>
-                    <b>Inn ${pa.inning} (${pa.half === 'away' ? 'VIS' : 'LOC'}):</b> ${esc(
+                    <b>Inn ${pa.inning} (${pa.half === 'away' ? 'VIS' : 'LOC'}):</b> <span class="player-link" data-player-id="${pa.batter}">${esc(
                       playerName(pa.batter)
-                    )} <span class="action-tag ${pa.result.toLowerCase().replace(/\s+/g, '-')}">${esc(
+                    )}</span> <span class="action-tag ${pa.result.toLowerCase().replace(/\s+/g, '-')}">${esc(
                       resultLabel(pa.result)
                     )}</span>
                   </div>
@@ -2470,6 +2703,7 @@
     $('#liveGameOverPanel').style.display = 'none';
   }
 
+  // FLUJO DE JUGADA SIMPLIFICADO: CLICK EN LA JUGADA -> CLICK EN CONFIRMAR (Requisito 4)
   function handleSelectPlayResult(action) {
     liveGameState.selectedPlayResult = action;
 
@@ -2478,19 +2712,28 @@
       action === 'Strikeout Looking' ||
       action === 'Groundout' ||
       action === 'Flyout' ||
-      action === 'Lineout'
+      action === 'Lineout' ||
+      action === 'Walk'
     ) {
       liveGameState.selectedRbi = 0;
     } else if (action === 'Home Run') {
       if (liveGameState.selectedRbi === 0) liveGameState.selectedRbi = 1;
     }
 
-    renderLiveGameUI();
+    // Actualizar visualmente la selección sin destruir el estado
+    $$('.btn-play-action').forEach(b => {
+      b.classList.toggle('selected', b.dataset.action === liveGameState.selectedPlayResult);
+    });
+    $$('.btn-rbi-opt').forEach(b => {
+      b.classList.toggle('active', Number(b.dataset.rbi) === liveGameState.selectedRbi);
+    });
   }
 
   function handleSelectRbi(rbiNum) {
     liveGameState.selectedRbi = Number(rbiNum);
-    renderLiveGameUI();
+    $$('.btn-rbi-opt').forEach(b => {
+      b.classList.toggle('active', Number(b.dataset.rbi) === liveGameState.selectedRbi);
+    });
   }
 
   function confirmLivePlay() {
@@ -2532,7 +2775,7 @@
     const rbi = explicitRbi > 0 ? explicitRbi : (isHR ? 1 : scoringPlayerIds.length);
     const prevRunners = { ...liveGameState.runners };
 
-    // GUARDAR INSTANTÁNEA EN UNDO STACK (SECCIÓN 16 Y 17)
+    // GUARDAR INSTANTÁNEA EN UNDO STACK
     liveGameState.undoStack.push({
       inning: liveGameState.inning,
       half: liveGameState.half,
@@ -2547,7 +2790,7 @@
       activePitcherAway: liveGameState.activePitcherAway,
       activePitcherHome: liveGameState.activePitcherHome
     });
-    liveGameState.redoStack = []; // Se limpia rehacer al ingresar nueva jugada
+    liveGameState.redoStack = [];
 
     const pa = {
       id: id(),
@@ -2599,8 +2842,7 @@
     // Disparar animación 2D en el estadio
     triggerStadiumAnimation('live', result, rbi, isHR);
 
-    // Reset selección
-    liveGameState.selectedPlayResult = 'Single';
+    // Conservar selección base o single para la siguiente jugada sin obligar doble click (Requisito 4)
     liveGameState.selectedRbi = 0;
 
     // Recalcular y auto-guardar inmediatamente
@@ -2608,19 +2850,36 @@
     save();
     updateActiveGameBanner();
 
-    // Comprobar fin de media entrada
+    // CAMBIO AUTOMÁTICO DE INNING AL COMPLETAR EL ÚLTIMO OUT (Requisito 3)
     const maxOuts = g.outsPerInning || 3;
     if (liveGameState.outs >= maxOuts) {
+      const maxInnings = g.innings || 7;
+      const isBottom = liveGameState.half === 'home';
+      const isFinalInning = liveGameState.inning >= maxInnings;
+
+      // Verificar si el partido ya finalizó
+      if (isFinalInning && isBottom && liveGameState.awayScore !== liveGameState.homeScore) {
+        finishLiveGame(false);
+        return;
+      } else if (isFinalInning && !isBottom && liveGameState.homeScore > liveGameState.awayScore) {
+        finishLiveGame(false);
+        return;
+      }
+
+      // Transición automática e inmediata sin que el usuario salga y vuelva a entrar
+      liveGameState.outs = 0;
       liveGameState.runners = { '1B': null, '2B': null, '3B': null };
       g.runners = { '1B': null, '2B': null, '3B': null };
-      renderLiveGameUI();
 
-      $('#livePlayBox').style.display = 'none';
-      $('#liveInningEndPanel').style.display = 'block';
-      $('#liveInningEndTitle').textContent = `ENTRADA ${liveGameState.inning} (${
-        isAwayBatting ? 'ALTA' : 'BAJA'
-      }) FINALIZADA`;
-      $('#liveInningEndScore').textContent = `${teamName(g.away)} ${g.awayScore} — ${g.homeScore} ${teamName(g.home)}`;
+      if (liveGameState.half === 'away') {
+        liveGameState.half = 'home';
+      } else {
+        liveGameState.half = 'away';
+        liveGameState.inning += 1;
+      }
+
+      save();
+      renderLiveGameUI();
     } else {
       renderLiveGameUI();
     }
@@ -2899,7 +3158,7 @@
   }
 
   // ----------------------------------------------------
-  // REPLAY 2D Y RESUMEN INTELIGENTE (SECCIONES 12, 13, 14, 15, 28)
+  // REPLAY 2D Y RESUMEN INTELIGENTE (REQUISITOS 1, 2, 5 Y 9)
   // ----------------------------------------------------
   function openGameReplay(gid) {
     const g = getGame(gid);
@@ -2908,6 +3167,7 @@
     closeModals();
     $('#gameReplayModal').classList.add('open');
 
+    // TODAS las jugadas en orden cronológico estricto (Requisito 9)
     replayState = {
       game: g,
       events: (g.batLog || []).slice(),
@@ -2919,22 +3179,67 @@
 
     renderReplayHeader(g);
     renderReplayLinescore(g);
-    renderReplayHighlights(g);
     renderReplayMVP(g);
     renderReplayTimeline();
+    renderReplayPBP(g);
     setReplayEventIndex(0);
+
+    // Controles de reproducción
+    $('#btnReplayPlayToggle').onclick = toggleReplayPlayback;
+    $('#btnReplayPrev').onclick = () => {
+      if (replayState.currentIndex > 0) setReplayEventIndex(replayState.currentIndex - 1);
+    };
+    $('#btnReplayNext').onclick = () => {
+      if (replayState.currentIndex < replayState.events.length - 1) {
+        setReplayEventIndex(replayState.currentIndex + 1);
+      }
+    };
+    $$('.speed-btn').forEach(btn => {
+      btn.onclick = () => {
+        $$('.speed-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        replayState.speed = Number(btn.dataset.speed) || 1;
+        if (replayState.isPlaying) {
+          toggleReplayPlayback();
+          toggleReplayPlayback();
+        }
+      };
+    });
+  }
+
+  function toggleReplayPlayback() {
+    if (replayState.isPlaying) {
+      clearInterval(replayState.intervalId);
+      replayState.isPlaying = false;
+      $('#btnReplayPlayToggle').textContent = '▶ Reproducir';
+    } else {
+      replayState.isPlaying = true;
+      $('#btnReplayPlayToggle').textContent = '⏸ Pausar';
+      const delay = Math.max(900, Math.round(2400 / (replayState.speed || 1)));
+      replayState.intervalId = setInterval(() => {
+        if (replayState.currentIndex >= replayState.events.length - 1) {
+          clearInterval(replayState.intervalId);
+          replayState.isPlaying = false;
+          $('#btnReplayPlayToggle').textContent = '▶ Reproducir';
+          return;
+        }
+        setReplayEventIndex(replayState.currentIndex + 1);
+      }, delay);
+    }
   }
 
   function renderReplayHeader(g) {
     const aName = teamName(g.away);
     const hName = teamName(g.home);
     $('#replayGameTitle').textContent = `${aName} ${g.awayScore} — ${g.homeScore} ${hName}`;
-    $('#replayGameMeta').textContent = `${seasonName(g.season)} • ${g.date || ''} ${g.time || ''} • ${
+    $('#replayGameMeta').textContent = `${seasonName(g.season)} • ${fmtDate(g.date)} • ${
       g.stadium || 'Estadio Oficial'
     }`;
   }
 
   function renderReplayLinescore(g) {
+    const tableEl = $('#replayLinescoreTable');
+    if (!tableEl) return;
     const maxInn = Math.max(7, ...(g.batLog || []).map(x => Number(x.inning) || 1));
     const awayInnRuns = Array(maxInn).fill(0);
     const homeInnRuns = Array(maxInn).fill(0);
@@ -2969,7 +3274,7 @@
     homeInnRuns.forEach(r => (homeRowHTML += `<td>${r}</td>`));
     homeRowHTML += `<td><b>${g.homeScore}</b></td><td>${homeHits}</td><td>0</td>`;
 
-    $('#replayLinescoreTable').innerHTML = `
+    tableEl.innerHTML = `
       <thead><tr>${headerHTML}</tr></thead>
       <tbody>
         <tr>${awayRowHTML}</tr>
@@ -2978,87 +3283,43 @@
     `;
   }
 
-  function renderReplayHighlights(g) {
-    const listEl = $('#replayHighlightsList');
-    const pas = g.batLog || [];
-    const highlights = [];
-
-    pas.forEach((pa, idx) => {
-      const bName = playerName(pa.batter);
-      const bp = db.players.find(x => x.id === pa.batter);
-      if (pa.result === 'Home Run') {
-        highlights.push({
-          idx,
-          player: bp,
-          icon: '🚀',
-          text: `HOME RUN de ${bName} (+${pa.rbi || 1} RBI)`,
-          inn: `Inn ${pa.inning}`
-        });
-      } else if (pa.result === 'Triple') {
-        highlights.push({
-          idx,
-          player: bp,
-          icon: '⚡',
-          text: `Triple por la raya de ${bName}`,
-          inn: `Inn ${pa.inning}`
-        });
-      } else if (pa.result === 'Double') {
-        highlights.push({
-          idx,
-          player: bp,
-          icon: '🔥',
-          text: `Doble de ${bName}`,
-          inn: `Inn ${pa.inning}`
-        });
-      } else if (Number(pa.rbi) >= 2) {
-        highlights.push({
-          idx,
-          player: bp,
-          icon: '💥',
-          text: `Batazo oportuno de ${bName} con ${pa.rbi} impulsadas`,
-          inn: `Inn ${pa.inning}`
-        });
-      } else if (pa.result.includes('Strikeout')) {
-        const pp = db.players.find(x => x.id === pa.pitcher);
-        highlights.push({
-          idx,
-          player: pp,
-          icon: '❌',
-          text: `Ponche propinado por ${playerName(pa.pitcher)}`,
-          inn: `Inn ${pa.inning}`
-        });
-      }
-    });
-
-    listEl.innerHTML = highlights.length
-      ? highlights
-          .slice(0, 10)
-          .map(h => {
-            const avatar = h.player?.photo
-              ? `<img src="${h.player.photo}" class="pbp-thumb-avatar" alt="">`
-              : `<div class="pbp-thumb-fallback">${(h.player?.name || 'J')[0]}</div>`;
+  function renderReplayPBP(g) {
+    const list = $('#replayPbpList');
+    if (!list) return;
+    const events = g.batLog || [];
+    list.innerHTML = events.length
+      ? events
+          .map((pa, idx) => {
+            const bp = db.players.find(x => x.id === pa.batter);
+            const avatar = bp?.photo
+              ? `<img src="${bp.photo}" class="pbp-thumb-avatar" alt="">`
+              : `<div class="pbp-thumb-fallback">${(bp?.name || 'J')[0]}</div>`;
             return `
-              <div class="highlight-row" data-replay-jump="${h.idx}">
+              <div class="live-log-row pbp-event-row ${idx === replayState.currentIndex ? 'active' : ''}" data-replay-jump="${idx}">
                 <div style="display:flex;align-items:center;gap:8px">
                   ${avatar}
                   <div>
-                    <b>${h.icon} ${esc(h.text)}</b>
-                    <small class="muted" style="display:block">${h.inn}</small>
+                    <b>#${idx + 1} • Inn ${pa.inning}${pa.half === 'away' ? '▲' : '▼'}:</b> 
+                    <span class="player-link" data-player-id="${pa.batter}">${esc(playerName(pa.batter))}</span> 
+                    <span class="action-tag ${pa.result.toLowerCase().replace(/\s+/g, '-')}">${esc(resultLabel(pa.result))}</span>
                   </div>
                 </div>
-                <button class="btn btn-sm yellow">Ver 2D</button>
+                <span style="color:${pa.rbi > 0 ? '#4ade80' : 'var(--muted)'};font-size:12px">
+                  ${pa.rbi > 0 ? `+${pa.rbi} RBI` : ''}
+                </span>
               </div>`;
           })
           .join('')
-      : '<div class="empty">Sin jugadas destacadas adicionales.</div>';
+      : '<div class="empty">Sin jugadas registradas en este partido.</div>';
 
-    $$('#replayHighlightsList [data-replay-jump]').forEach(btn => {
+    $$('#replayPbpList [data-replay-jump]').forEach(btn => {
       btn.onclick = () => setReplayEventIndex(Number(btn.dataset.replayJump));
     });
   }
 
   function renderReplayMVP(g) {
     const area = $('#replayMvpArea');
+    if (!area) return;
     const mvpObj = calculateGameMVP(g);
     if (!mvpObj || !mvpObj.player) {
       area.innerHTML = '<div class="muted">No hay datos suficientes para calcular MVP.</div>';
@@ -3074,7 +3335,9 @@
         ${avatar}
         <div>
           <span class="mvp-badge">🏆 MVP DEL PARTIDO</span>
-          <h3 style="margin:4px 0;color:var(--yellow);font-size:18px">${esc(p.name)}</h3>
+          <h3 style="margin:4px 0;color:var(--yellow);font-size:18px">
+            <span class="player-link" data-player-id="${p.id}">${esc(p.name)}</span>
+          </h3>
           <div class="muted" style="font-size:12px">${esc(teamName(p.team))} • #${esc(p.number || '—')}</div>
           <div style="margin-top:6px;font-weight:700;color:#fff;font-size:13px">${esc(mvpObj.statLine)}</div>
         </div>
@@ -3097,7 +3360,7 @@
               <div class="timeline-node-chip ${idx === 0 ? 'active' : ''}" data-replay-idx="${idx}">
                 <span>#${idx + 1}</span>
                 ${avatar}
-                <b>Inn ${pa.inning}</b>
+                <b>Inn ${pa.inning}${pa.half === 'away' ? '▲' : '▼'}</b>
                 <span>${esc(resultLabel(pa.result))}</span>
               </div>`;
           })
@@ -3112,6 +3375,8 @@
   function setReplayEventIndex(idx) {
     const events = replayState.events;
     if (!events.length) {
+      if ($('#replayEventCountBadge')) $('#replayEventCountBadge').textContent = 'Jugada 0 de 0';
+      if ($('#replayNarrativeText')) $('#replayNarrativeText').textContent = 'Sin jugadas registradas en este partido.';
       renderStadiumDiamond('replay', { '1B': null, '2B': null, '3B': null });
       return;
     }
@@ -3119,27 +3384,105 @@
     const clampedIdx = Math.max(0, Math.min(events.length - 1, idx));
     replayState.currentIndex = clampedIdx;
 
+    if ($('#replayEventCountBadge')) {
+      $('#replayEventCountBadge').textContent = `Jugada ${clampedIdx + 1} de ${events.length}`;
+    }
+
     $$('#replayTimelineTrack .timeline-node-chip').forEach((c, i) => {
+      c.classList.toggle('active', i === clampedIdx);
+    });
+    $$('#replayPbpList .pbp-event-row').forEach((c, i) => {
       c.classList.toggle('active', i === clampedIdx);
     });
 
     const pa = events[clampedIdx];
     const bName = playerName(pa.batter);
     const pName = playerName(pa.pitcher);
+    const bp = db.players.find(x => x.id === pa.batter);
+    const pp = db.players.find(x => x.id === pa.pitcher);
 
-    $('#replayPlayInfo').innerHTML = `
-      <b>JUGADA #${clampedIdx + 1}:</b> Entrada ${pa.inning} (${pa.half === 'away' ? 'Alta' : 'Baja'}) • 
-      <b>${esc(bName)}</b> al bate vs <b>${esc(pName)}</b> ➔ 
-      <span style="color:var(--yellow);font-weight:800">${esc(resultLabel(pa.result))}</span>
-      ${pa.rbi > 0 ? ` <span style="color:#4ade80">(+${pa.rbi} RBI)</span>` : ''}
-    `;
+    // Determinar fildeador interviniente para animar (Requisitos 1 y 5)
+    let interveningPos = null;
+    if (pa.result === 'Single') interveningPos = 'LF';
+    else if (pa.result === 'Double') interveningPos = 'CF';
+    else if (pa.result === 'Triple') interveningPos = 'RF';
+    else if (pa.result === 'Home Run') interveningPos = 'CF';
+    else if (pa.result.includes('Strikeout')) interveningPos = 'C';
+    else if (pa.result.includes('out')) interveningPos = 'SS';
+    else if (pa.result === 'Flyout') interveningPos = 'CF';
+    else if (pa.result === 'Reached Error' || pa.result === 'Error') interveningPos = '3B';
 
+    // Renderizar defensivos reales del equipo defensor (Requisitos 1 y 5)
+    renderStadiumDefense('replay', replayState.game, pa.half, interveningPos);
+
+    // Actualizar Banners de Narrativa
+    if ($('#replayNarrativeInn')) {
+      $('#replayNarrativeInn').textContent = `Inn ${pa.inning}${pa.half === 'away' ? '▲' : '▼'}`;
+    }
+    if ($('#replayNarrativeText')) {
+      $('#replayNarrativeText').innerHTML = `
+        <span class="player-link" data-player-id="${pa.batter}"><b>${esc(bName)}</b></span> al bate vs 
+        <span class="player-link" data-player-id="${pa.pitcher}"><b>${esc(pName)}</b></span> ➔ 
+        <span style="color:var(--yellow);font-weight:900">${esc(resultLabel(pa.result))}</span>
+        ${pa.rbi > 0 ? ` <span style="color:#4ade80;font-weight:800">(+${pa.rbi} RBI)</span>` : ''}
+      `;
+    }
+
+    // Actualizar Tarjeta de Detalle de la Jugada
+    const detailBox = $('#replayCurrentPlayDetail');
+    if (detailBox) {
+      const defTeamId = pa.half === 'away' ? replayState.game.home : replayState.game.away;
+      const batTeamId = pa.half === 'away' ? replayState.game.away : replayState.game.home;
+      const fPlayer = interveningPos ? db.players.find(x => x.id === (pa.half === 'away' ? replayState.game.homePositions?.[interveningPos] : replayState.game.awayPositions?.[interveningPos])) : null;
+
+      detailBox.innerHTML = `
+        <div class="play-detail-actors">
+          <div class="actor-mini-card player-link" data-player-id="${pa.batter}">
+            ${bp?.photo ? `<img src="${bp.photo}" class="actor-mini-avatar" alt="">` : '<div class="fielder-avatar-fallback">👤</div>'}
+            <div>
+              <small class="muted" style="display:block;font-size:10px">BATEADOR (${teamName(batTeamId)})</small>
+              <b>${esc(bName)}</b>
+            </div>
+          </div>
+          <div class="actor-mini-card player-link" data-player-id="${pa.pitcher}">
+            ${pp?.photo ? `<img src="${pp.photo}" class="actor-mini-avatar" alt="">` : '<div class="fielder-avatar-fallback">⚾</div>'}
+            <div>
+              <small class="muted" style="display:block;font-size:10px">LANZADOR (${teamName(defTeamId)})</small>
+              <b>${esc(pName)}</b>
+            </div>
+          </div>
+        </div>
+        ${fPlayer ? `
+          <div style="font-size:12px;color:rgba(255,255,255,0.8);background:#061c10;padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.06)">
+            🛡️ <b>Defensa en jugada:</b> <span class="player-link" data-player-id="${fPlayer.id}">${esc(fPlayer.name)}</span> (${interveningPos})
+          </div>
+        ` : ''}
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;font-size:13px">
+          <span><b>Resultado:</b> <span class="action-tag ${pa.result.toLowerCase().replace(/\s+/g, '-')}">${esc(resultLabel(pa.result))}</span></span>
+          <span style="color:var(--yellow);font-weight:800">${pa.rbi > 0 ? `+${pa.rbi} Carreras impulsadas` : ''}</span>
+        </div>
+      `;
+    }
+
+    // 1. Mostrar corredores antes de la jugada
     renderStadiumDiamond('replay', pa.runnersBefore || { '1B': null, '2B': null, '3B': null }, pa.pitcher, pa.batter);
-    triggerStadiumAnimation('replay', pa.result, pa.rbi, pa.result === 'Home Run');
 
+    // 2. Animación del lanzamiento: Lanzador -> Home
+    const ball = $('#replayStadiumBall');
+    if (ball) {
+      ball.className = 'stadium-animated-ball pitching';
+      ball.style.display = 'block';
+    }
+
+    // 3. Contacto y trayectoria
+    setTimeout(() => {
+      triggerStadiumAnimation('replay', pa.result, pa.rbi, pa.result === 'Home Run');
+    }, 450);
+
+    // 4. Avance de corredores en bases
     setTimeout(() => {
       renderStadiumDiamond('replay', pa.runnersAfter || { '1B': null, '2B': null, '3B': null }, pa.pitcher, null);
-    }, 450);
+    }, 900);
   }
 
   function gameStatus(g) {
@@ -3154,7 +3497,7 @@
     return `
       <div class="gamecard ${isLive ? 'gamecard-live' : ''}">
         <div class="head">
-          <span class="muted">${esc(g.date)} ${esc(g.time)} • ${esc(seasonName(g.season))}</span>
+          <span class="muted">📅 ${fmtDate(g.date)} • ${esc(seasonName(g.season))}</span>
           <span class="pill">${sr ? `Serie: ${esc(teamName(sr.teamA))} vs ${esc(teamName(sr.teamB))}` : 'Juego de liga'}</span>
         </div>
         <div class="teamscore">
@@ -3179,11 +3522,55 @@
       </div>`;
   }
 
+  // REQUISITOS 16 Y 17: JUEGOS — ÚLTIMOS 10 POR DEFECTO + BUSCADOR COMPLETO
   function renderGames() {
     const el = $('#gamesList');
-    el.innerHTML = db.games.length
-      ? db.games.slice().reverse().map(gameHTML).join('')
-      : empty('No hay juegos', 'Pulsa "+ Crear Partido (Paso a Paso)" para iniciar un juego.');
+    if (!el) return;
+
+    // Poblar selector de temporadas en el filtro si es necesario
+    const seasonFilterSel = $('#gamesFilterSeason');
+    if (seasonFilterSel) {
+      const currentVal = seasonFilterSel.value;
+      seasonFilterSel.innerHTML = '<option value="">Todas las temporadas</option>' +
+        db.seasons.map(s => `<option value="${s.id}" ${s.id === currentVal ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
+    }
+
+    // Filtrar juegos
+    let list = db.games.slice().reverse();
+    const hasFilter = Boolean(gamesFilter.season || gamesFilter.date || gamesFilter.team);
+
+    if (gamesFilter.season) {
+      list = list.filter(g => g.season === gamesFilter.season);
+    }
+    if (gamesFilter.date) {
+      list = list.filter(g => (g.date || '').startsWith(gamesFilter.date));
+    }
+    if (gamesFilter.team) {
+      const term = gamesFilter.team.toLowerCase().trim();
+      list = list.filter(g =>
+        teamName(g.away).toLowerCase().includes(term) ||
+        teamName(g.home).toLowerCase().includes(term)
+      );
+    }
+
+    const noticeEl = $('#gamesFilterStatus') || $('#gamesCountNotice');
+    if (!hasFilter) {
+      const totalAll = list.length;
+      list = list.slice(0, 10);
+      if (noticeEl) {
+        noticeEl.innerHTML = totalAll > 10
+          ? `Mostrando los <b>últimos 10 juegos</b> registrados (de ${totalAll} totales). Usa los filtros superiores para explorar el historial completo.`
+          : `Mostrando los <b>${list.length} juegos</b> registrados en la liga.`;
+      }
+    } else {
+      if (noticeEl) {
+        noticeEl.innerHTML = `Mostrando <b>${list.length} juego(s)</b> según los filtros aplicados.`;
+      }
+    }
+
+    el.innerHTML = list.length
+      ? list.map(gameHTML).join('')
+      : empty('No se encontraron juegos', hasFilter ? 'No hay partidos que coincidan con los filtros seleccionados.' : 'Pulsa "+ Crear Partido (Paso a Paso)" para registrar un juego.');
 
     $$('[data-live-game]').forEach(b => (b.onclick = () => initLiveGame(b.dataset.liveGame)));
     $$('[data-replay-game]').forEach(b => (b.onclick = () => openGameReplay(b.dataset.replayGame)));
@@ -3210,55 +3597,63 @@
     );
   }
 
-  // REGLAS N° 5: GESTIÓN Y ELIMINACIÓN DE TEMPORADAS POR EL ADMINISTRADOR
+  // REQUISITO 7 Y 15: TEMPORADAS CON CONTADOR REAL DE JUEGOS Y ACCESO AL PERFIL
   function seasonHTML(s) {
     const series = db.series.filter(x => x.season === s.id);
-    const body =
-      s.type === 'elimination'
-        ? series.length
-          ? series
-              .map(sr => {
-                const pa = db.games
-                  .filter(g => g.series === sr.id)
-                  .reduce((n, g) => n + (g.batLog || []).length, 0);
-                return `
-                  <div class="series">
-                    <div class="head">
-                      <div>
-                        <span class="team-link" data-team-id="${sr.teamA}">${esc(teamName(sr.teamA))}</span> vs 
-                        <span class="team-link" data-team-id="${sr.teamB}">${esc(teamName(sr.teamB))}</span>
-                      </div>
-                      <span class="pill">${esc(sr.status)}</span>
+    const seasonGames = db.games.filter(g => g.season === s.id);
+    const realGamesCount = seasonGames.length;
+    const format = s.format || (s.type === 'elimination' ? 'elimination' : 'league');
+    const isBoth = format === 'both';
+    const isElim = format === 'elimination';
+
+    const formatLabel = isBoth
+      ? 'Liga + Eliminatoria'
+      : isElim
+      ? 'Eliminatoria'
+      : 'Fase de Liga';
+
+    const body = isElim
+      ? series.length
+        ? series
+            .map(sr => {
+              const pa = db.games
+                .filter(g => g.series === sr.id)
+                .reduce((n, g) => n + (g.batLog || []).length, 0);
+              return `
+                <div class="series">
+                  <div class="head">
+                    <div>
+                      <span class="team-link" data-team-id="${sr.teamA}">${esc(teamName(sr.teamA))}</span> vs 
+                      <span class="team-link" data-team-id="${sr.teamB}">${esc(teamName(sr.teamB))}</span>
                     </div>
-                    <div class="muted" style="margin-top:7px">
-                      Mejor de ${sr.bestOf} • ${sr.winsA} — ${sr.winsB} • ${
-                  db.games.filter(g => g.series === sr.id).length
-                } juegos • ${pa} PA registradas
-                    </div>
-                  </div>`;
-              })
-              .join('')
-          : empty('No hay series', 'Pulsa “+ Serie” para crear el enfrentamiento.')
-        : `<div class="muted" style="margin-top:10px">Esta liga tendrá <b>${esc(
-            s.gamesCount || 0
-          )}</b> juegos registrados desde la sección Juegos.</div>`;
+                    <span class="pill">${esc(sr.status)}</span>
+                  </div>
+                  <div class="muted" style="margin-top:7px">
+                    Mejor de ${sr.bestOf} • ${sr.winsA} — ${sr.winsB} • ${
+                db.games.filter(g => g.series === sr.id).length
+              } juegos • ${pa} PA registradas
+                  </div>
+                </div>`;
+            })
+            .join('')
+        : `<div class="muted" style="margin-top:10px">Esta temporada tiene <b>${realGamesCount}</b> juegos vinculados. Pulsa en la temporada para ver su cuadro.</div>`
+      : `<div class="muted" style="margin-top:10px">Esta temporada tiene <b>${realGamesCount}</b> juegos registrados en el sistema.</div>`;
 
     return `
-      <div class="gamecard">
+      <div class="gamecard season-interactive-card" data-season-id="${s.id}">
         <div class="head">
-          <div>
+          <div style="cursor:pointer" data-season-id="${s.id}">
             <b style="font-size:18px;color:var(--yellow)">${esc(s.name)}</b>
-            <div class="muted">${s.type === 'league' ? 'Liga' : 'Eliminatoria'} • ${esc(s.start || '')} ${
-      s.end ? '→ ' + esc(s.end) : ''
+            <div class="muted">${formatLabel} • ${fmtDate(s.start)} ${
+      s.end ? '→ ' + fmtDate(s.end) : ''
     }</div>
           </div>
           <div class="actions">
-            <span class="tag">${
-              s.type === 'league' ? `${esc(s.gamesCount || 0)} juegos` : `Mejor de ${esc(s.bestOf)}`
-            }</span>
+            <span class="tag" style="background:var(--yellow);color:#0a1a0e;font-weight:bold">${realGamesCount} juegos</span>
+            <button class="btn yellow" data-season-id="${s.id}">🏆 Ver Temporada</button>
             <button class="btn admin-only" data-edit-season="${s.id}">Editar</button>
             <button class="btn danger admin-only" data-del-season="${s.id}">Eliminar</button>
-            ${s.type === 'elimination' ? `<button class="btn yellow admin-only" data-new-series="${s.id}">+ Serie</button>` : ''}
+            ${isElim ? `<button class="btn yellow admin-only" data-new-series="${s.id}">+ Serie</button>` : ''}
           </div>
         </div>
         ${body}
@@ -3267,30 +3662,41 @@
 
   function renderSeason() {
     const el = $('#seasonList');
-    el.innerHTML = db.seasons.length
-      ? db.seasons.map(seasonHTML).join('')
-      : empty('No hay temporadas', 'Crea una temporada y elige si será Liga o Eliminatoria.');
+    if (el) {
+      el.innerHTML = db.seasons.length
+        ? db.seasons.map(seasonHTML).join('')
+        : empty('No hay temporadas', 'Crea una temporada para organizar la competencia.');
+    }
 
-    $('#homeSeasonList').innerHTML = db.seasons.length
-      ? db.seasons
-          .slice(0, 4)
-          .map(
-            s => `
-            <div class="gamecard">
-              <b>${esc(s.name)}</b>
-              <div class="muted">${
-                s.type === 'league'
-                  ? 'Liga — ' + esc(s.gamesCount || 0) + ' juegos'
-                  : 'Eliminatoria — mejor de ' + esc(s.bestOf)
-              }</div>
-            </div>`
-          )
-          .join('')
-      : empty('No hay temporadas', 'Crea tu primera competencia.');
+    const homeEl = $('#homeSeasonList');
+    if (homeEl) {
+      homeEl.innerHTML = db.seasons.length
+        ? db.seasons
+            .slice(0, 4)
+            .map(
+              s => {
+                const gamesCount = db.games.filter(g => g.season === s.id).length;
+                return `
+                <div class="gamecard season-interactive-card" data-season-id="${s.id}" style="cursor:pointer">
+                  <b>${esc(s.name)}</b>
+                  <div class="muted">${
+                    s.format === 'both'
+                      ? 'Liga + Eliminatoria • ' + gamesCount + ' juegos'
+                      : s.format === 'elimination' || s.type === 'elimination'
+                      ? 'Eliminatoria • ' + gamesCount + ' juegos'
+                      : 'Liga • ' + gamesCount + ' juegos'
+                  }</div>
+                </div>`;
+              }
+            )
+            .join('')
+        : empty('No hay temporadas', 'Crea tu primera competencia.');
+    }
 
     $$('[data-edit-season]').forEach(
       b =>
-        (b.onclick = () => {
+        (b.onclick = (e) => {
+          e.stopPropagation();
           if (!checkAdmin()) return;
           openModal('seasonModal');
           prepareSeasonModal(b.dataset.editSeason);
@@ -3298,7 +3704,8 @@
     );
     $$('[data-del-season]').forEach(
       b =>
-        (b.onclick = () => {
+        (b.onclick = (e) => {
+          e.stopPropagation();
           const sid = b.dataset.delSeason;
           const s = db.seasons.find(x => x.id === sid);
           requestDoubleDelete(
@@ -3310,7 +3717,8 @@
     );
     $$('[data-new-series]').forEach(
       b =>
-        (b.onclick = () => {
+        (b.onclick = (e) => {
+          e.stopPropagation();
           if (!checkAdmin()) return;
           openModal('seriesModal');
           prepareSeriesModal();
@@ -3319,6 +3727,659 @@
           }, 0);
         })
     );
+  }
+
+  // ----------------------------------------------------
+  // REQUISITO 14: CÁLCULO DE PREMIOS INDIVIDUALES POR TEMPORADA
+  // ----------------------------------------------------
+  function calculateSeasonAwards(seasonId) {
+    const s = db.seasons.find(x => x.id === seasonId);
+    const games = db.games.filter(g => g.season === seasonId);
+    if (!s || !games.length) return null;
+
+    const pas = [];
+    games.forEach(g => {
+      (g.batLog || []).forEach(pa => {
+        pas.push({ ...pa, game: g });
+      });
+    });
+
+    if (!pas.length) return null;
+
+    let bestMvp = null;
+    let bestMvpScore = -Infinity;
+    let hitsLeader = null;
+    let maxHits = 0;
+    let hrLeader = null;
+    let maxHR = 0;
+    let bestCyYoung = null;
+    let bestCyScore = -Infinity;
+
+    db.players.forEach(p => {
+      const b = batterStats(p.id, pas);
+      const pit = pitcherStats(p.id, pas);
+      const gamesPlayed = games.filter(g =>
+        (g.batLog || []).some(pa => pa.batter === p.id || pa.pitcher === p.id)
+      ).length;
+
+      if (gamesPlayed === 0 && b.PA === 0 && pit.outs === 0) return;
+
+      // 1. Pete Rose: Líder de Hits
+      if (b.H > maxHits) {
+        maxHits = b.H;
+        hitsLeader = { player: p, stats: b, hits: b.H };
+      }
+
+      // 2. Hank Aaron: Líder de Home Runs
+      if (b.HR > maxHR) {
+        maxHR = b.HR;
+        hrLeader = { player: p, stats: b, hr: b.HR };
+      }
+
+      // 3. Cy Young: Mejor Lanzador Ponderado
+      // Pondera volumen de entradas + ponches + control para evitar sesgo de muestras pequeñas
+      if (pit.outs >= 3) {
+        const ip = pit.outs / 3;
+        const eraNum = parseFloat(pit.ERA) || 0;
+        const whipNum = parseFloat(pit.WHIP) || 1.5;
+        const eraBonus = Math.max(0, (5.0 - eraNum)) * (ip * 1.5);
+        const whipBonus = Math.max(0, (2.0 - whipNum)) * (ip * 1.0);
+        const cyScore = (ip * 4.0) + (pit.SO * 2.5) + eraBonus + whipBonus;
+
+        if (cyScore > bestCyScore) {
+          bestCyScore = cyScore;
+          bestCyYoung = {
+            player: p,
+            stats: pit,
+            score: Math.round(cyScore),
+            ip: pit.IP,
+            era: pit.ERA,
+            so: pit.SO,
+            whip: pit.WHIP
+          };
+        }
+      }
+
+      // 4. MVP: Mejor Jugador del Campeonato
+      const batScore = (b.H * 4) + (b.D * 3) + (b.T * 5) + (b.HR * 10) + (b.RBI * 4) + (b.R * 2) + (b.SB * 2) + (b.AVG * 150);
+      const pitchScore = (pit.outs * 1.5) + (pit.SO * 3) - (pit.ER * 4);
+      const mvpScore = batScore + pitchScore + (gamesPlayed * 5);
+
+      if (mvpScore > bestMvpScore && (b.PA > 0 || pit.outs > 0)) {
+        bestMvpScore = mvpScore;
+        bestMvp = {
+          player: p,
+          score: Math.round(mvpScore),
+          bat: b,
+          pitch: pit,
+          gamesPlayed
+        };
+      }
+    });
+
+    return {
+      mvp: bestMvp,
+      hitsLeader,
+      hrLeader,
+      cyYoung: bestCyYoung
+    };
+  }
+
+  // ----------------------------------------------------
+  // REQUISITOS 12, 14 Y 15: PERFIL INTERACTIVO DE TEMPORADA
+  // ----------------------------------------------------
+  function openSeasonProfile(sid) {
+    if (!sid) return;
+    activeSeasonId = sid;
+    activeSeasonTab = 'summary';
+    show('seasonProfile');
+    renderSeasonProfile();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function renderSeasonProfile() {
+    const el = $('#seasonProfileArea');
+    if (!el) return;
+    const s = db.seasons.find(x => x.id === activeSeasonId);
+    if (!s) {
+      el.innerHTML = empty('Temporada no encontrada', 'Selecciona una temporada de la lista.');
+      return;
+    }
+
+    const seasonGames = db.games.filter(g => g.season === s.id);
+    const seasonFormat = s.format || (s.type === 'elimination' ? 'elimination' : 'league');
+    const hasLeague = seasonFormat === 'league' || seasonFormat === 'both';
+    const hasElim = seasonFormat === 'elimination' || seasonFormat === 'both';
+
+    const awards = calculateSeasonAwards(s.id);
+    const participatingTeams = Array.isArray(s.teams) && s.teams.length
+      ? s.teams.map(tid => db.teams.find(t => t.id === tid)).filter(Boolean)
+      : db.teams;
+
+    el.innerHTML = `
+      <div style="margin-bottom:15px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+        <button class="btn" data-go="season">← Volver a Temporadas</button>
+        <div class="actions">
+          <button class="btn yellow admin-only" id="btnSeasonCreateGame">+ Crear Partido para esta Temporada</button>
+          <button class="btn admin-only" data-edit-season="${s.id}">Editar Configuración</button>
+        </div>
+      </div>
+
+      <!-- Hero Banner de la Temporada con Flyer Oficial (Requisito 15) -->
+      <div class="season-hero-banner">
+        <div class="season-flyer-box">
+          ${
+            s.flyer
+              ? `<img src="${s.flyer}" class="season-flyer-img" alt="Flyer ${esc(s.name)}" />`
+              : `<div class="season-flyer-placeholder">
+                  <span style="font-size:48px">🏆</span>
+                  <small style="color:var(--yellow);font-weight:700">ROSMIL LEAGUE</small>
+                </div>`
+          }
+          <div class="flyer-upload-overlay admin-only">
+            <label class="btn btn-sm yellow" style="cursor:pointer;margin:0">
+              📷 Cambiar Flyer Oficial
+              <input type="file" id="seasonFlyerChangeInput" accept="image/*" style="display:none">
+            </label>
+          </div>
+        </div>
+        <div class="season-info-box">
+          <div class="eyebrow" style="color:var(--yellow)">OFICIAL • ROSMIL LEAGUE</div>
+          <h1 style="margin:4px 0 10px;font-size:28px">${esc(s.name)}</h1>
+          <div class="season-tags-row">
+            <span class="tag" style="background:var(--yellow);color:#0a1a0e;font-weight:bold">
+              ${hasLeague && hasElim ? '🏆 LIGA + ELIMINATORIA' : hasLeague ? '📊 FASE DE LIGA' : '⚔️ ELIMINATORIA DIRECTA'}
+            </span>
+            <span class="tag">📅 Año ${esc(s.year || 2026)}</span>
+            <span class="tag">⚾ ${seasonGames.length} Juegos vinculados</span>
+            <span class="tag">👥 ${participatingTeams.length} Equipos</span>
+          </div>
+          ${s.desc ? `<p class="muted" style="margin-top:12px;font-size:14px;line-height:1.5">${esc(s.desc)}</p>` : ''}
+          <div class="muted" style="font-size:13px;margin-top:10px">
+            <b>Período:</b> ${fmtDate(s.start)} ${s.end ? '→ ' + fmtDate(s.end) : ''}
+          </div>
+        </div>
+      </div>
+
+      <!-- Navegación por Pestañas de la Temporada (Requisito 12 y 15) -->
+      <div class="season-nav-tabs">
+        <button class="season-tab-btn ${activeSeasonTab === 'summary' ? 'active' : ''}" data-season-tab="summary">📋 Resumen</button>
+        <button class="season-tab-btn ${activeSeasonTab === 'games' ? 'active' : ''}" data-season-tab="games">⚾ Partidos (${seasonGames.length})</button>
+        ${hasLeague ? `<button class="season-tab-btn ${activeSeasonTab === 'standings' ? 'active' : ''}" data-season-tab="standings">📊 Posiciones</button>` : ''}
+        ${hasElim ? `<button class="season-tab-btn ${activeSeasonTab === 'bracket' ? 'active' : ''}" data-season-tab="bracket">⚔️ Cuadro Eliminatorio</button>` : ''}
+        <button class="season-tab-btn ${activeSeasonTab === 'awards' ? 'active' : ''}" data-season-tab="awards">🏆 Premios y Galardones</button>
+        <button class="season-tab-btn ${activeSeasonTab === 'teams' ? 'active' : ''}" data-season-tab="teams">👥 Equipos (${participatingTeams.length})</button>
+      </div>
+
+      <!-- Contenido de la Pestaña Activa -->
+      <div id="seasonTabContent"></div>
+    `;
+
+    renderSeasonActiveTabContent(s, seasonGames, hasLeague, hasElim, awards, participatingTeams);
+
+    // Eventos de Pestañas
+    $$('[data-season-tab]').forEach(b => {
+      b.onclick = () => {
+        activeSeasonTab = b.dataset.seasonTab;
+        renderSeasonProfile();
+      };
+    });
+
+    // Subida / Reemplazo de Flyer Oficial
+    const flyerInput = $('#seasonFlyerChangeInput');
+    if (flyerInput) {
+      flyerInput.onchange = e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+          s.flyer = ev.target.result;
+          save();
+          renderSeasonProfile();
+        };
+        reader.readAsDataURL(file);
+      };
+    }
+
+    const btnCreateGame = $('#btnSeasonCreateGame');
+    if (btnCreateGame) {
+      btnCreateGame.onclick = () => {
+        if (!checkAdmin()) return;
+        openGameWizard();
+        setTimeout(() => {
+          if ($('#wizGameSeason')) $('#wizGameSeason').value = s.id;
+        }, 100);
+      };
+    }
+  }
+
+  function renderSeasonActiveTabContent(s, seasonGames, hasLeague, hasElim, awards, participatingTeams) {
+    const container = $('#seasonTabContent');
+    if (!container) return;
+
+    if (activeSeasonTab === 'summary') {
+      container.innerHTML = `
+        <div class="grid2">
+          <div class="panel">
+            <div class="head">
+              <h3>⚾ Últimos Partidos de la Temporada</h3>
+              <button class="btn btn-sm" data-season-tab="games">Ver todos (${seasonGames.length})</button>
+            </div>
+            ${seasonGames.length ? seasonGames.slice(-3).reverse().map(gameHTML).join('') : empty('Sin partidos', 'Aún no se han jugado partidos en esta temporada.')}
+          </div>
+
+          <div class="panel">
+            <div class="head">
+              <h3>🏆 Premios Destacados</h3>
+              <button class="btn btn-sm" data-season-tab="awards">Ver todos</button>
+            </div>
+            ${
+              awards?.mvp
+                ? `
+                <div class="season-award-card" style="margin-top:10px">
+                  <div class="award-trophy">🏆</div>
+                  <div class="award-title">MEJOR JUGADOR DEL CAMPEONATO (MVP)</div>
+                  <div class="award-winner-row">
+                    ${awards.mvp.player.photo ? `<img class="award-avatar" src="${awards.mvp.player.photo}" alt="">` : '<div class="award-avatar">👤</div>'}
+                    <div>
+                      <div class="award-player-name player-link" data-player-id="${awards.mvp.player.id}">${esc(awards.mvp.player.name)}</div>
+                      <div class="muted">${awards.mvp.player.team ? esc(teamName(awards.mvp.player.team)) : 'Agente libre'}</div>
+                    </div>
+                  </div>
+                  <div class="award-metric">${awards.mvp.bat.H} H • ${awards.mvp.bat.HR} HR • ${awards.mvp.bat.RBI} RBI • ${awards.mvp.gamesPlayed} Juegos</div>
+                </div>`
+                : empty('Premios en cálculo', 'Los premios se calcularán automáticamente conforme se registren las jugadas del torneo.')
+            }
+          </div>
+        </div>
+      `;
+    } else if (activeSeasonTab === 'games') {
+      container.innerHTML = `
+        <div class="panel">
+          <div class="head">
+            <h3>Partidos Oficiales de ${esc(s.name)}</h3>
+            <span class="muted">${seasonGames.length} juegos registrados</span>
+          </div>
+          ${seasonGames.length ? seasonGames.slice().reverse().map(gameHTML).join('') : empty('No hay juegos', 'Pulsa "+ Crear Partido para esta Temporada" para programar el primer encuentro.')}
+        </div>
+      `;
+    } else if (activeSeasonTab === 'standings' && hasLeague) {
+      // Calcular tabla de posiciones exclusivamente para esta temporada
+      const teamStats = {};
+      participatingTeams.forEach(t => {
+        teamStats[t.id] = { team: t, w: 0, l: 0, rs: 0, ra: 0, diff: 0, pct: 0 };
+      });
+
+      seasonGames.forEach(g => {
+        if (!g.batLog || !g.batLog.length) return;
+        const aScore = Number(g.awayScore) || 0;
+        const hScore = Number(g.homeScore) || 0;
+        if (aScore === hScore) return;
+
+        if (!teamStats[g.away]) teamStats[g.away] = { team: db.teams.find(t => t.id === g.away) || { id: g.away, name: teamName(g.away) }, w: 0, l: 0, rs: 0, ra: 0, diff: 0, pct: 0 };
+        if (!teamStats[g.home]) teamStats[g.home] = { team: db.teams.find(t => t.id === g.home) || { id: g.home, name: teamName(g.home) }, w: 0, l: 0, rs: 0, ra: 0, diff: 0, pct: 0 };
+
+        teamStats[g.away].rs += aScore;
+        teamStats[g.away].ra += hScore;
+        teamStats[g.home].rs += hScore;
+        teamStats[g.home].ra += aScore;
+
+        if (aScore > hScore) {
+          teamStats[g.away].w++;
+          teamStats[g.home].l++;
+        } else {
+          teamStats[g.home].w++;
+          teamStats[g.away].l++;
+        }
+      });
+
+      const rows = Object.values(teamStats).map(r => {
+        const total = r.w + r.l;
+        r.pct = total > 0 ? r.w / total : 0;
+        r.diff = r.rs - r.ra;
+        return r;
+      }).sort((a, b) => b.pct - a.pct || b.w - a.w || b.diff - a.diff);
+
+      container.innerHTML = `
+        <div class="panel">
+          <div class="head">
+            <h3>Tabla de Posiciones Oficial — Fase de Liga</h3>
+            <span class="muted">${rows.length} equipos en competencia</span>
+          </div>
+          <div class="tablewrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Equipo</th>
+                  <th>G</th>
+                  <th>P</th>
+                  <th>PCT</th>
+                  <th>CA</th>
+                  <th>CP</th>
+                  <th>DIF</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows.map((r, idx) => `
+                  <tr>
+                    <td><b>${idx + 1}</b></td>
+                    <td>
+                      ${r.team.logo ? `<img class="teamlogo" src="${r.team.logo}" alt="">` : ''}
+                      <span class="team-link" data-team-id="${r.team.id}">${esc(r.team.name)}</span>
+                    </td>
+                    <td><b style="color:var(--yellow)">${r.w}</b></td>
+                    <td>${r.l}</td>
+                    <td><b>${r.pct.toFixed(3).replace('0.', '.')}</b></td>
+                    <td>${r.rs}</td>
+                    <td>${r.ra}</td>
+                    <td style="color:${r.diff >= 0 ? 'var(--yellow)' : 'var(--red)'}"><b>${r.diff >= 0 ? '+' + r.diff : r.diff}</b></td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    } else if (activeSeasonTab === 'bracket' && hasElim) {
+      // Cuadro Eliminatorio Generado Automáticamente (Requisito 13)
+      const seriesList = db.series.filter(sr => sr.season === s.id);
+      container.innerHTML = `
+        <div class="panel">
+          <div class="head">
+            <h3>Cuadro Eliminatorio / Playoffs</h3>
+            <button class="btn yellow btn-sm admin-only" data-new-series="${s.id}">+ Crear Nueva Serie</button>
+          </div>
+          <div class="bracket-tree-container">
+            ${
+              seriesList.length
+                ? `
+                <div class="bracket-round">
+                  <div class="bracket-round-title">SERIES DE POSTEMPORADA</div>
+                  ${seriesList.map(sr => `
+                    <div class="bracket-match-card">
+                      <div class="match-team ${sr.winsA > sr.winsB ? 'winner' : ''}">
+                        <span class="team-link" data-team-id="${sr.teamA}">${esc(teamName(sr.teamA))}</span>
+                        <span class="match-score">${sr.winsA}</span>
+                      </div>
+                      <div class="match-team ${sr.winsB > sr.winsA ? 'winner' : ''}">
+                        <span class="team-link" data-team-id="${sr.teamB}">${esc(teamName(sr.teamB))}</span>
+                        <span class="match-score">${sr.winsB}</span>
+                      </div>
+                      <div class="muted" style="font-size:11px;margin-top:6px;text-align:center">
+                        Mejor de ${sr.bestOf} • ${esc(sr.status || 'En curso')}
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>`
+                : empty('Cuadro en preparación', 'Pulsa "+ Crear Nueva Serie" para definir los enfrentamientos de playoffs.')
+            }
+          </div>
+        </div>
+      `;
+    } else if (activeSeasonTab === 'awards') {
+      // Premios Individuales por Temporada (Requisito 14)
+      container.innerHTML = `
+        <div class="panel">
+          <div class="head">
+            <div>
+              <h3>Premios Oficiales de la Temporada</h3>
+              <p class="muted" style="margin:2px 0 0">Calculados automáticamente con base en las estadísticas reales registradas durante la competencia.</p>
+            </div>
+          </div>
+
+          <div class="season-awards-grid" style="margin-top:16px">
+            <!-- MVP -->
+            <div class="season-award-card">
+              <div class="award-trophy">🏆</div>
+              <div class="award-title">MEJOR JUGADOR DEL CAMPEONATO (MVP)</div>
+              ${
+                awards?.mvp
+                  ? `
+                  <div class="award-winner-row">
+                    ${awards.mvp.player.photo ? `<img class="award-avatar" src="${awards.mvp.player.photo}" alt="">` : '<div class="award-avatar">👤</div>'}
+                    <div>
+                      <div class="award-player-name player-link" data-player-id="${awards.mvp.player.id}">${esc(awards.mvp.player.name)}</div>
+                      <div class="muted">${awards.mvp.player.team ? esc(teamName(awards.mvp.player.team)) : 'Agente libre'}</div>
+                    </div>
+                  </div>
+                  <div class="award-metric">
+                    Score Integral: <b>${awards.mvp.score} PTS</b><br>
+                    ${awards.mvp.bat.H} H • ${awards.mvp.bat.HR} HR • ${awards.mvp.bat.RBI} RBI • ${awards.mvp.gamesPlayed} PJ
+                  </div>`
+                  : '<div class="muted" style="padding:15px">Pendiente de juegos oficiales</div>'
+              }
+            </div>
+
+            <!-- PETE ROSE (HITS) -->
+            <div class="season-award-card">
+              <div class="award-trophy">🏆</div>
+              <div class="award-title">PETE ROSE — LÍDER DE HITS</div>
+              ${
+                awards?.hitsLeader
+                  ? `
+                  <div class="award-winner-row">
+                    ${awards.hitsLeader.player.photo ? `<img class="award-avatar" src="${awards.hitsLeader.player.photo}" alt="">` : '<div class="award-avatar">👤</div>'}
+                    <div>
+                      <div class="award-player-name player-link" data-player-id="${awards.hitsLeader.player.id}">${esc(awards.hitsLeader.player.name)}</div>
+                      <div class="muted">${awards.hitsLeader.player.team ? esc(teamName(awards.hitsLeader.player.team)) : 'Agente libre'}</div>
+                    </div>
+                  </div>
+                  <div class="award-metric">
+                    <b>${awards.hitsLeader.hits} HITS CONECTADOS</b><br>
+                    Promedio: ${fmtAvg(awards.hitsLeader.stats.AVG)} AVG
+                  </div>`
+                  : '<div class="muted" style="padding:15px">Pendiente de juegos oficiales</div>'
+              }
+            </div>
+
+            <!-- HANK AARON (HOME RUNS) -->
+            <div class="season-award-card">
+              <div class="award-trophy">🏆</div>
+              <div class="award-title">HANK AARON — LÍDER DE HOME RUNS</div>
+              ${
+                awards?.hrLeader
+                  ? `
+                  <div class="award-winner-row">
+                    ${awards.hrLeader.player.photo ? `<img class="award-avatar" src="${awards.hrLeader.player.photo}" alt="">` : '<div class="award-avatar">👤</div>'}
+                    <div>
+                      <div class="award-player-name player-link" data-player-id="${awards.hrLeader.player.id}">${esc(awards.hrLeader.player.name)}</div>
+                      <div class="muted">${awards.hrLeader.player.team ? esc(teamName(awards.hrLeader.player.team)) : 'Agente libre'}</div>
+                    </div>
+                  </div>
+                  <div class="award-metric">
+                    <b>${awards.hrLeader.hr} HOME RUNS</b><br>
+                    ${awards.hrLeader.stats.RBI} Carreras Impulsadas
+                  </div>`
+                  : '<div class="muted" style="padding:15px">Pendiente de juegos oficiales</div>'
+              }
+            </div>
+
+            <!-- CY YOUNG (MEJOR LANZADOR) -->
+            <div class="season-award-card">
+              <div class="award-trophy">🏆</div>
+              <div class="award-title">CY YOUNG — MEJOR LANZADOR</div>
+              ${
+                awards?.cyYoung
+                  ? `
+                  <div class="award-winner-row">
+                    ${awards.cyYoung.player.photo ? `<img class="award-avatar" src="${awards.cyYoung.player.photo}" alt="">` : '<div class="award-avatar">👤</div>'}
+                    <div>
+                      <div class="award-player-name player-link" data-player-id="${awards.cyYoung.player.id}">${esc(awards.cyYoung.player.name)}</div>
+                      <div class="muted">${awards.cyYoung.player.team ? esc(teamName(awards.cyYoung.player.team)) : 'Agente libre'}</div>
+                    </div>
+                  </div>
+                  <div class="award-metric">
+                    <b>${awards.cyYoung.ip} IP • ${awards.cyYoung.so} SO</b><br>
+                    ERA: ${awards.cyYoung.era} • WHIP: ${awards.cyYoung.whip}
+                  </div>`
+                  : '<div class="muted" style="padding:15px">Pendiente de juegos oficiales</div>'
+              }
+            </div>
+          </div>
+        </div>
+      `;
+    } else if (activeSeasonTab === 'teams') {
+      container.innerHTML = `
+        <div class="panel">
+          <div class="head">
+            <h3>Equipos Participantes (${participatingTeams.length})</h3>
+          </div>
+          <div class="cards" style="margin-top:12px">
+            ${participatingTeams.map(t => {
+              const tPlayers = teamPlayers(t.id);
+              return `
+                <div class="card team-link" data-team-id="${t.id}" style="cursor:pointer">
+                  ${t.logo ? `<img src="${t.logo}" class="teamlogo" style="width:40px;height:40px;margin-bottom:8px" alt="">` : '<div style="font-size:28px;margin-bottom:8px">⚾</div>'}
+                  <b>${esc(t.name)}</b>
+                  <small style="color:var(--muted)">${tPlayers.length} Jugadores en roster</small>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    }
+  }
+
+  // ----------------------------------------------------
+  // REQUISITO 13: ASISTENTE DE CREACIÓN DE TEMPORADAS (PASO A PASO)
+  // ----------------------------------------------------
+  function openSeasonWizard() {
+    if (!checkAdmin()) return;
+    seasonWizardState = {
+      step: 1,
+      name: '',
+      year: new Date().getFullYear(),
+      start: '',
+      end: '',
+      flyer: '',
+      desc: '',
+      format: 'league',
+      leagueGamesPerTeam: 10,
+      pointsSystem: 'winLoss',
+      teamsQualifying: 4,
+      playoffSeriesFormat: 3,
+      selectedTeamIds: db.teams.map(t => t.id)
+    };
+
+    if ($('#swName')) $('#swName').value = '';
+    if ($('#swYear')) $('#swYear').value = seasonWizardState.year;
+    if ($('#swStart')) $('#swStart').value = '';
+    if ($('#swEnd')) $('#swEnd').value = '';
+    if ($('#swDesc')) $('#swDesc').value = '';
+    if ($('#swFlyerPreview')) $('#swFlyerPreview').style.display = 'none';
+
+    setSeasonWizardStep(1);
+    openModal('seasonWizardModal');
+  }
+
+  function setSeasonWizardStep(step) {
+    seasonWizardState.step = step;
+    for (let i = 1; i <= 5; i++) {
+      const page = $(`#swPage${i}`);
+      const pill = $(`#swPill${i}`);
+      if (page) page.style.display = i === step ? 'block' : 'none';
+      if (pill) pill.classList.toggle('active', i === step);
+    }
+
+    if (step === 2) {
+      updateSeasonWizardFormatCards();
+    } else if (step === 3) {
+      updateSeasonWizardStep3();
+    } else if (step === 4) {
+      renderSeasonWizardTeams();
+    } else if (step === 5) {
+      renderSeasonWizardSummary();
+    }
+  }
+
+  function updateSeasonWizardFormatCards() {
+    const fmt = seasonWizardState.format;
+    const cardLeague = $('#cardFormatLeague');
+    const cardElim = $('#cardFormatElimination');
+    const cardBoth = $('#cardFormatBoth');
+
+    if (cardLeague) cardLeague.classList.toggle('active', fmt === 'league');
+    if (cardElim) cardElim.classList.toggle('active', fmt === 'elimination');
+    if (cardBoth) cardBoth.classList.toggle('active', fmt === 'both');
+
+    const radio = $(`input[name="swFormat"][value="${fmt}"]`);
+    if (radio) radio.checked = true;
+  }
+
+  function updateSeasonWizardStep3() {
+    const fmt = seasonWizardState.format;
+    const leagueBlock = $('#swLeagueConfigBlock');
+    const elimBlock = $('#swElimConfigBlock');
+
+    if (leagueBlock) leagueBlock.style.display = (fmt === 'league' || fmt === 'both') ? 'block' : 'none';
+    if (elimBlock) elimBlock.style.display = (fmt === 'elimination' || fmt === 'both') ? 'block' : 'none';
+  }
+
+  function renderSeasonWizardTeams() {
+    const container = $('#swTeamsListCheckboxes');
+    if (!container) return;
+
+    if (!db.teams.length) {
+      container.innerHTML = empty('Sin equipos', 'Primero crea equipos en la sección Equipos.');
+      return;
+    }
+
+    container.innerHTML = db.teams.map(t => {
+      const isChecked = seasonWizardState.selectedTeamIds.includes(t.id);
+      return `
+        <label class="sw-team-item ${isChecked ? 'selected' : ''}">
+          <input type="checkbox" value="${t.id}" ${isChecked ? 'checked' : ''} class="sw-team-cb">
+          ${t.logo ? `<img class="teamlogo" src="${t.logo}" alt="">` : '⚾'}
+          <span><b>${esc(t.name)}</b></span>
+        </label>
+      `;
+    }).join('');
+
+    const countEl = $('#swTeamsSelectedCount');
+    if (countEl) countEl.textContent = `${seasonWizardState.selectedTeamIds.length} equipos seleccionados`;
+
+    $$('.sw-team-cb').forEach(cb => {
+      cb.onchange = () => {
+        const tid = cb.value;
+        if (cb.checked) {
+          if (!seasonWizardState.selectedTeamIds.includes(tid)) seasonWizardState.selectedTeamIds.push(tid);
+        } else {
+          seasonWizardState.selectedTeamIds = seasonWizardState.selectedTeamIds.filter(x => x !== tid);
+        }
+        cb.closest('.sw-team-item').classList.toggle('selected', cb.checked);
+        if (countEl) countEl.textContent = `${seasonWizardState.selectedTeamIds.length} equipos seleccionados`;
+      };
+    });
+  }
+
+  function renderSeasonWizardSummary() {
+    const summaryEl = $('#swSummaryArea');
+    if (!summaryEl) return;
+
+    const fmt = seasonWizardState.format;
+    const formatName = fmt === 'both' ? 'Liga + Eliminatoria (Playoffs)' : fmt === 'elimination' ? 'Eliminatoria Directa' : 'Fase de Liga Regular';
+
+    summaryEl.innerHTML = `
+      <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">
+        ${seasonWizardState.flyer ? `<img src="${seasonWizardState.flyer}" style="width:120px;height:150px;object-fit:cover;border-radius:10px;border:2px solid var(--yellow)" alt="">` : ''}
+        <div style="flex:1">
+          <div class="eyebrow" style="color:var(--yellow)">CONFIGURACIÓN LISTA</div>
+          <h2 style="margin:4px 0 10px;font-size:24px">${esc(seasonWizardState.name || 'Temporada Oficial')}</h2>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+            <span class="tag" style="background:var(--yellow);color:#0a1a0e;font-weight:bold">${formatName}</span>
+            <span class="tag">Año ${seasonWizardState.year}</span>
+            <span class="tag">${seasonWizardState.selectedTeamIds.length} Equipos</span>
+          </div>
+          <div class="muted" style="font-size:13px;line-height:1.6">
+            ${(fmt === 'league' || fmt === 'both') ? `• Fase regular: aprox. ${seasonWizardState.leagueGamesPerTeam} juegos por franquicia con Tabla de Posiciones oficial.<br>` : ''}
+            ${(fmt === 'elimination' || fmt === 'both') ? `• Postemporada: ${seasonWizardState.teamsQualifying} clasificados al Cuadro Eliminatorio, series al mejor de ${seasonWizardState.playoffSeriesFormat}.<br>` : ''}
+            • Fechas: ${fmtDate(seasonWizardState.start)} ${seasonWizardState.end ? 'hasta ' + fmtDate(seasonWizardState.end) : ''}
+          </div>
+        </div>
+      </div>
+    `;
   }
 
   function renderStandings() {
@@ -3588,59 +4649,85 @@
   // ----------------------------------------------------
   // RANKING GENERAL DE JUGADORES (ROSMIL LEAGUE 0.2 - REGLAS 25, 34, 40)
   // ----------------------------------------------------
-  function calculatePlayerRanking() {
+  // ----------------------------------------------------
+  // REQUISITO 6: RANKING SEPARADO DE BATEADORES Y LANZADORES
+  // ----------------------------------------------------
+  function calculateBattersRanking() {
     const pas = allPAs();
     return db.players
       .map(p => {
         const bs = batterStats(p.id, pas);
-        const ps = pitcherStats(p.id, pas);
-        const hasB = bs.PA > 0;
-        const hasP = ps.outs > 0;
-
-        let rawScore = 0;
-        if (hasB) {
-          rawScore += (bs.AVG * 260) + (bs.H * 4) + (bs.D * 3) + (bs.T * 5) + (bs.HR * 8) + (bs.RBI * 4) + (bs.R * 2) + (bs.SB * 3) - (bs.SO * 0.5);
-        }
-        if (hasP) {
-          rawScore += (ps.SO * 4) + (ps.outs * 1.5) - (ps.ER * 5) - (ps.BB * 2);
-        }
-
-        const score = hasB || hasP ? Math.min(99, Math.max(50, Math.round(52 + rawScore * 0.35))) : 0;
-
+        if (bs.PA === 0) return null;
+        const rawScore = (bs.AVG * 320) + (bs.H * 4) + (bs.D * 3) + (bs.T * 5) + (bs.HR * 10) + (bs.RBI * 4) + (bs.R * 2) + (bs.SB * 3) - (bs.SO * 0.5);
+        const score = Math.min(99, Math.max(50, Math.round(52 + rawScore * 0.35)));
         return {
           player: p,
-          bat: bs,
-          pitch: ps,
+          stats: bs,
           score,
-          rawScore,
-          hasAction: hasB || hasP
+          rawScore
         };
       })
-      .sort((a, b) => b.rawScore - a.rawScore || b.score - a.score);
+      .filter(Boolean)
+      .sort((a, b) => b.rawScore - a.rawScore || b.stats.AVG - a.stats.AVG || b.stats.H - a.stats.H);
+  }
+
+  function calculatePitchersRanking() {
+    const pas = allPAs();
+    return db.players
+      .map(p => {
+        const ps = pitcherStats(p.id, pas);
+        if (ps.outs === 0) return null;
+        const ip = ps.outs / 3;
+        const eraNum = parseFloat(ps.ERA) || 0;
+        const whipNum = parseFloat(ps.WHIP) || 1.5;
+        const eraBonus = Math.max(0, (5.0 - eraNum)) * (ip * 1.5);
+        const whipBonus = Math.max(0, (2.0 - whipNum)) * (ip * 1.0);
+        const rawScore = (ip * 4.0) + (ps.SO * 3) + eraBonus + whipBonus;
+        const score = Math.min(99, Math.max(50, Math.round(55 + rawScore * 0.3)));
+        return {
+          player: p,
+          stats: ps,
+          score,
+          rawScore,
+          ipNum: ip
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.rawScore - a.rawScore || b.stats.outs - a.stats.outs || b.stats.SO - a.stats.SO);
   }
 
   function renderRanking() {
     const el = $('#rankingArea');
     if (!el) return;
 
-    const ranking = calculatePlayerRanking();
+    // Resaltar botón de pestaña activo
+    $$('[data-ranking-tab]').forEach(b => {
+      b.classList.toggle('active', b.dataset.rankingTab === activeRankingTab);
+    });
+
+    const isBatters = activeRankingTab === 'batters';
+    const ranking = isBatters ? calculateBattersRanking() : calculatePitchersRanking();
+
     if (!ranking.length) {
-      el.innerHTML = empty('Sin jugadores clasificados', 'Crea jugadores y registra partidos oficiales en la liga.');
+      el.innerHTML = empty(
+        isBatters ? 'Sin bateadores con turnos oficiales' : 'Sin lanzadores con entradas oficiales',
+        'Registra partidos en vivo o anota jugadas para clasificar jugadores en el ranking oficial.'
+      );
       return;
     }
 
     const top3 = ranking.slice(0, 3);
+    const medals = ['🥇 #1 ORO', '🥈 #2 PLATA', '🥉 #3 BRONCE'];
 
     el.innerHTML = `
       <!-- Podio de Honor -->
       <div class="ranking-podium">
         ${top3
           .map((r, idx) => {
-            const medals = ['🥇 #1 ORO', '🥈 #2 PLATA', '🥉 #3 BRONCE'];
             return `
             <div class="podium-card ${idx === 0 ? 'first' : ''}">
               <div class="podium-rank">${medals[idx]}</div>
-              <div class="podium-avatar">
+              <div class="podium-avatar player-link" data-player-id="${r.player.id}" style="cursor:pointer">
                 ${
                   r.player.photo
                     ? `<img src="${r.player.photo}" alt="${esc(r.player.name)}">`
@@ -3659,8 +4746,11 @@
               </div>
               <div class="podium-score">${r.score} <small style="font-size:12px;color:var(--muted)">SCORE</small></div>
               <div class="muted" style="font-size:11px;margin-top:6px">
-                ${r.bat.PA > 0 ? `${fmtAvg(r.bat.AVG)} AVG • ${r.bat.HR} HR • ${r.bat.RBI} RBI` : ''}
-                ${r.pitch.outs > 0 ? ` • ${r.pitch.IP} IP • ${r.pitch.SO} SO` : ''}
+                ${
+                  isBatters
+                    ? `${fmtAvg(r.stats.AVG)} AVG • ${r.stats.H} H • ${r.stats.HR} HR • ${r.stats.RBI} RBI`
+                    : `ERA ${r.stats.ERA} • ${r.stats.IP} IP • ${r.stats.SO} SO • WHIP ${r.stats.WHIP}`
+                }
               </div>
             </div>`;
           })
@@ -3670,25 +4760,48 @@
       <!-- Tabla Completa del Ranking -->
       <div class="panel" style="margin-top:20px">
         <div class="head">
-          <h3>Tabla Oficial del Ranking General</h3>
-          <span class="muted">${ranking.length} atletas registrados</span>
+          <h3>${isBatters ? 'Ranking Oficial de Bateadores' : 'Ranking Oficial de Lanzadores'}</h3>
+          <span class="muted">${ranking.length} ${isBatters ? 'bateadores' : 'lanzadores'} clasificados</span>
         </div>
         <div class="tablewrap">
           <table>
             <thead>
-              <tr>
-                <th style="width:50px">Puesto</th>
-                <th>Jugador</th>
-                <th>Equipo Actual</th>
-                <th>Posición</th>
-                <th>AVG</th>
-                <th>H</th>
-                <th>HR</th>
-                <th>RBI</th>
-                <th>IP / SO</th>
-                <th>ADN Rating</th>
-                <th>Acción</th>
-              </tr>
+              ${
+                isBatters
+                  ? `
+                <tr>
+                  <th style="width:50px">#</th>
+                  <th>Jugador</th>
+                  <th>Equipo</th>
+                  <th>Pos</th>
+                  <th>AVG</th>
+                  <th>H</th>
+                  <th>2B</th>
+                  <th>3B</th>
+                  <th>HR</th>
+                  <th>RBI</th>
+                  <th>CA</th>
+                  <th>BR</th>
+                  <th>ADN Rating</th>
+                  <th>Perfil</th>
+                </tr>`
+                  : `
+                <tr>
+                  <th style="width:50px">#</th>
+                  <th>Lanzador</th>
+                  <th>Equipo</th>
+                  <th>Pos</th>
+                  <th>ERA</th>
+                  <th>IP</th>
+                  <th>SO</th>
+                  <th>WHIP</th>
+                  <th>H (P)</th>
+                  <th>BB</th>
+                  <th>CL</th>
+                  <th>ADN Rating</th>
+                  <th>Perfil</th>
+                </tr>`
+              }
             </thead>
             <tbody>
               ${ranking
@@ -3697,7 +4810,7 @@
                 <tr>
                   <td><b>#${i + 1}</b></td>
                   <td>
-                    ${r.player.photo ? `<img class="avatar" src="${r.player.photo}" alt="">` : ''}
+                    ${r.player.photo ? `<img class="avatar player-link" data-player-id="${r.player.id}" src="${r.player.photo}" style="cursor:pointer" alt="">` : ''}
                     <span class="player-link" data-player-id="${r.player.id}">${esc(r.player.name)}</span>
                   </td>
                   <td>
@@ -3708,14 +4821,31 @@
                     }
                   </td>
                   <td>${esc(r.player.position || '—')}</td>
-                  <td><b>${fmtAvg(r.bat.AVG)}</b></td>
-                  <td>${r.bat.H}</td>
-                  <td>${r.bat.HR}</td>
-                  <td>${r.bat.RBI}</td>
-                  <td>${r.pitch.outs > 0 ? `${r.pitch.IP} / ${r.pitch.SO}K` : '—'}</td>
+                  ${
+                    isBatters
+                      ? `
+                    <td><b>${fmtAvg(r.stats.AVG)}</b></td>
+                    <td><b>${r.stats.H}</b></td>
+                    <td>${r.stats.D}</td>
+                    <td>${r.stats.T}</td>
+                    <td><b style="color:var(--yellow)">${r.stats.HR}</b></td>
+                    <td><b>${r.stats.RBI}</b></td>
+                    <td>${r.stats.R}</td>
+                    <td>${r.stats.SB}</td>
+                  `
+                      : `
+                    <td><b style="color:var(--yellow)">${r.stats.ERA}</b></td>
+                    <td><b>${r.stats.IP}</b></td>
+                    <td><b style="color:var(--yellow)">${r.stats.SO}</b></td>
+                    <td>${r.stats.WHIP}</td>
+                    <td>${r.stats.H}</td>
+                    <td>${r.stats.BB}</td>
+                    <td>${r.stats.ER}</td>
+                  `
+                  }
                   <td><span class="ranking-score-pill">${r.score} PTS</span></td>
                   <td>
-                    <button class="btn btn-sm yellow" data-player-id="${r.player.id}">Ver ADN</button>
+                    <button class="btn btn-sm yellow" data-player-id="${r.player.id}">Ver Perfil</button>
                   </td>
                 </tr>`
                 )
@@ -3725,6 +4855,14 @@
         </div>
       </div>
     `;
+
+    // Eventos de botones de cambio de pestaña en ranking
+    $$('[data-ranking-tab]').forEach(b => {
+      b.onclick = () => {
+        activeRankingTab = b.dataset.rankingTab;
+        renderRanking();
+      };
+    });
   }
 
   function renderHistory() {
@@ -3894,6 +5032,9 @@
     }
     if (activePlayerId && $('#playerProfile').classList.contains('active')) {
       renderPlayerProfile();
+    }
+    if (activeSeasonId && $('#seasonProfile') && $('#seasonProfile').classList.contains('active')) {
+      renderSeasonProfile();
     }
   }
 
@@ -5235,21 +6376,207 @@
       });
     }
 
-    // NAVEGACIÓN GLOBAL POR CLICKS (REGLAS 13 Y 14)
+    // ----------------------------------------------------
+    // REQUISITOS 16 Y 17: CONTROLES DEL BUSCADOR DE PARTIDOS
+    // ----------------------------------------------------
+    if ($('#gamesFilterSeason')) {
+      $('#gamesFilterSeason').addEventListener('change', function () {
+        gamesFilter.season = this.value;
+        renderGames();
+      });
+    }
+    if ($('#gamesFilterDate')) {
+      $('#gamesFilterDate').addEventListener('change', function () {
+        gamesFilter.date = this.value;
+        renderGames();
+      });
+    }
+    if ($('#gamesFilterTeam')) {
+      $('#gamesFilterTeam').addEventListener('input', function () {
+        gamesFilter.team = this.value;
+        renderGames();
+      });
+    }
+    const resetBtn = $('#btnResetGamesFilter') || $('#gamesFilterReset');
+    if (resetBtn) {
+      resetBtn.addEventListener('click', () => {
+        gamesFilter = { season: '', date: '', team: '' };
+        if ($('#gamesFilterSeason')) $('#gamesFilterSeason').value = '';
+        if ($('#gamesFilterDate')) $('#gamesFilterDate').value = '';
+        if ($('#gamesFilterTeam')) $('#gamesFilterTeam').value = '';
+        renderGames();
+      });
+    }
+
+    // ----------------------------------------------------
+    // REQUISITO 13: ASISTENTE DE CREACIÓN DE TEMPORADAS (PASO A PASO)
+    // ----------------------------------------------------
+    if ($('#btnOpenSeasonWizard')) {
+      $('#btnOpenSeasonWizard').addEventListener('click', () => {
+        if (!checkAdmin()) return;
+        openSeasonWizard();
+      });
+    }
+
+    if ($('#swBtnStep1')) {
+      $('#swBtnStep1').addEventListener('click', () => {
+        const name = $('#swName')?.value?.trim();
+        if (!name) {
+          alert('Por favor, ingresa el nombre de la temporada.');
+          $('#swName')?.focus();
+          return;
+        }
+        seasonWizardState.name = name;
+        seasonWizardState.year = Number($('#swYear')?.value) || 2026;
+        seasonWizardState.start = $('#swStart')?.value || '';
+        seasonWizardState.end = $('#swEnd')?.value || '';
+        seasonWizardState.desc = $('#swDesc')?.value?.trim() || '';
+        setSeasonWizardStep(2);
+      });
+    }
+
+    if ($('#swBackBtn2')) $('#swBackBtn2').addEventListener('click', () => setSeasonWizardStep(1));
+
+    ['cardFormatLeague', 'cardFormatElimination', 'cardFormatBoth'].forEach(cardId => {
+      const card = $('#' + cardId);
+      if (card) {
+        card.addEventListener('click', () => {
+          const radio = card.querySelector('input[type="radio"]');
+          if (radio) {
+            seasonWizardState.format = radio.value;
+            updateSeasonWizardFormatCards();
+          }
+        });
+      }
+    });
+
+    if ($('#swBtnStep2')) {
+      $('#swBtnStep2').addEventListener('click', () => {
+        const sel = $('input[name="swFormat"]:checked');
+        if (sel) seasonWizardState.format = sel.value;
+        setSeasonWizardStep(3);
+      });
+    }
+
+    if ($('#swBackBtn3')) $('#swBackBtn3').addEventListener('click', () => setSeasonWizardStep(2));
+
+    if ($('#swBtnStep3')) {
+      $('#swBtnStep3').addEventListener('click', () => {
+        seasonWizardState.leagueGamesPerTeam = Number($('#swLeagueGamesPerTeam')?.value) || 10;
+        seasonWizardState.pointsSystem = $('#swPointsSystem')?.value || 'winLoss';
+        seasonWizardState.teamsQualifying = Number($('#swTeamsQualifying')?.value) || 4;
+        seasonWizardState.playoffSeriesFormat = Number($('#swPlayoffSeriesFormat')?.value) || 3;
+        setSeasonWizardStep(4);
+      });
+    }
+
+    if ($('#swBackBtn4')) $('#swBackBtn4').addEventListener('click', () => setSeasonWizardStep(3));
+
+    if ($('#swBtnSelectAllTeams')) {
+      $('#swBtnSelectAllTeams').addEventListener('click', () => {
+        const allChecked = seasonWizardState.selectedTeamIds.length === db.teams.length;
+        if (allChecked) {
+          seasonWizardState.selectedTeamIds = [];
+        } else {
+          seasonWizardState.selectedTeamIds = db.teams.map(t => t.id);
+        }
+        renderSeasonWizardTeams();
+      });
+    }
+
+    if ($('#swBtnStep4')) {
+      $('#swBtnStep4').addEventListener('click', () => {
+        if (!seasonWizardState.selectedTeamIds.length) {
+          alert('Por favor selecciona al menos un equipo participante.');
+          return;
+        }
+        setSeasonWizardStep(5);
+      });
+    }
+
+    if ($('#swBackBtn5')) $('#swBackBtn5').addEventListener('click', () => setSeasonWizardStep(4));
+
+    if ($('#swFlyerFile')) {
+      $('#swFlyerFile').addEventListener('change', e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+          seasonWizardState.flyer = ev.target.result;
+          const prev = $('#swFlyerPreview');
+          if (prev) {
+            prev.src = ev.target.result;
+            prev.style.display = 'block';
+          }
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    if ($('#swBtnCreateSeason')) {
+      $('#swBtnCreateSeason').addEventListener('click', () => {
+        if (!checkAdmin()) return;
+        const newSeason = {
+          id: id(),
+          name: seasonWizardState.name,
+          year: seasonWizardState.year,
+          start: seasonWizardState.start,
+          end: seasonWizardState.end,
+          flyer: seasonWizardState.flyer,
+          desc: seasonWizardState.desc,
+          format: seasonWizardState.format,
+          type: seasonWizardState.format === 'both' ? 'league' : seasonWizardState.format,
+          leagueGamesPerTeam: seasonWizardState.leagueGamesPerTeam,
+          pointsSystem: seasonWizardState.pointsSystem,
+          teamsQualifying: seasonWizardState.teamsQualifying,
+          bestOf: seasonWizardState.playoffSeriesFormat,
+          gamesCount: 0,
+          teams: [...seasonWizardState.selectedTeamIds],
+          createdAt: Date.now()
+        };
+
+        db.seasons.push(newSeason);
+        save();
+        closeModals();
+        openSeasonProfile(newSeason.id);
+      });
+    }
+
+    // ----------------------------------------------------
+    // REQUISITOS 8, 11 Y 15: DELEGACIÓN GLOBAL DE EVENTOS (INTERACTIVIDAD 100%)
+    // ----------------------------------------------------
     document.addEventListener('click', e => {
+      // 1. Botones [data-go] (Corrige definitivamente "Volver a lista de jugadores" y navegación)
+      const goTarget = e.target.closest('[data-go]');
+      if (goTarget) {
+        e.preventDefault();
+        show(goTarget.dataset.go);
+        return;
+      }
+
+      // 2. Jugadores [data-player-id] (Fotos, nombres, tarjetas, avatares abren perfil de jugador)
       const pTarget = e.target.closest('[data-player-id]');
       if (pTarget) {
         e.preventDefault();
-        e.stopPropagation();
         openPlayerProfile(pTarget.dataset.playerId);
         return;
       }
 
+      // 3. Equipos [data-team-id] (Nombres, logos, badges abren perfil de equipo)
       const tTarget = e.target.closest('[data-team-id]');
       if (tTarget) {
         e.preventDefault();
-        e.stopPropagation();
         openTeamProfile(tTarget.dataset.teamId);
+        return;
+      }
+
+      // 4. Temporadas [data-season-id] (Tarjetas, nombres, botones abren perfil de temporada)
+      const sTarget = e.target.closest('[data-season-id]');
+      if (sTarget) {
+        // Ignorar si el click fue en un botón de acción interno (ej: editar o eliminar)
+        if (e.target.closest('button:not([data-season-id])')) return;
+        e.preventDefault();
+        openSeasonProfile(sTarget.dataset.seasonId);
         return;
       }
     });

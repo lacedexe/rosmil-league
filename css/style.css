@@ -2260,31 +2260,103 @@ tr:hover td {
   pointer-events: none;
 }
 
-.stadium-pos-tag {
+/* Fildeadores Defensivos Reales con Fotos y Posiciones (Requisitos 1 y 5) */
+.stadium-fielder-node {
   position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  cursor: pointer;
+  z-index: 18;
+  transition: transform 0.2s ease, filter 0.2s ease;
+  user-select: none;
+}
+
+.stadium-fielder-node:hover {
+  transform: translate(-50%, -50%) scale(1.15);
+  z-index: 30;
+}
+
+.stadium-fielder-node.active-play {
+  animation: fielderPulse 0.7s ease-in-out infinite alternate;
+  z-index: 35;
+}
+
+@keyframes fielderPulse {
+  0% { transform: translate(-50%, -50%) scale(1); filter: drop-shadow(0 0 4px #eab308); }
+  100% { transform: translate(-50%, -50%) scale(1.25); filter: drop-shadow(0 0 16px #facc15); }
+}
+
+.fielder-avatar-slot {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1.5px solid var(--yellow);
+  background: #04140b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
+}
+
+.fielder-avatar-slot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fielder-avatar-fallback {
   font-size: 10px;
   font-weight: 800;
-  color: rgba(255, 255, 255, 0.4);
-  transform: translate(-50%, -50%);
-  pointer-events: none;
+  color: #fff;
+}
+
+.fielder-pos-pill {
+  font-size: 9px;
+  font-weight: 900;
+  color: #03120a;
+  background: var(--yellow);
+  padding: 0 4px;
+  border-radius: 3px;
+  line-height: 1.3;
   letter-spacing: 0.5px;
 }
-.stadium-pos-tag.cf { top: 14%; left: 50%; }
-.stadium-pos-tag.lf { top: 24%; left: 18%; }
-.stadium-pos-tag.rf { top: 24%; left: 82%; }
-.stadium-pos-tag.ss { top: 42%; left: 34%; }
-.stadium-pos-tag.b2 { top: 42%; left: 66%; }
-.stadium-pos-tag.b3 { top: 62%; left: 24%; }
-.stadium-pos-tag.b1 { top: 62%; left: 76%; }
+
+.fielder-name-pill {
+  font-size: 9px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(3, 18, 10, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 1px 4px;
+  border-radius: 3px;
+  max-width: 58px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Posiciones de Jardineros e Infielders */
+.stadium-fielder-node.cf { top: 11%; left: 50%; }
+.stadium-fielder-node.lf { top: 22%; left: 16%; }
+.stadium-fielder-node.rf { top: 22%; left: 84%; }
+.stadium-fielder-node.ss { top: 38%; left: 33%; }
+.stadium-fielder-node.b2 { top: 38%; left: 67%; }
+.stadium-fielder-node.b3 { top: 55%; left: 14%; }
+.stadium-fielder-node.b1 { top: 55%; left: 86%; }
+.stadium-fielder-node.c  { top: 89%; left: 50%; }
 
 /* Infield de Arcilla (Rotado 45 Grados) */
 .stadium-clay-diamond {
   position: absolute;
-  width: 220px;
-  height: 220px;
+  width: 200px;
+  height: 200px;
   background: #9a491e;
   left: 50%;
-  top: 56%;
+  top: 53%;
   transform: translate(-50%, -50%) rotate(45deg);
   border-radius: 14px;
   box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5), 0 0 15px rgba(0, 0, 0, 0.3);
@@ -2292,11 +2364,11 @@ tr:hover td {
 
 .stadium-inner-turf {
   position: absolute;
-  width: 140px;
-  height: 140px;
+  width: 125px;
+  height: 125px;
   background: #15693b;
   left: 50%;
-  top: 56%;
+  top: 53%;
   transform: translate(-50%, -50%) rotate(45deg);
   border-radius: 10px;
   box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.35);
@@ -2308,7 +2380,7 @@ tr:hover td {
   width: 2px;
   height: 340px;
   background: rgba(255, 255, 255, 0.7);
-  bottom: 18%;
+  bottom: 22%;
   pointer-events: none;
   transform-origin: bottom center;
 }
@@ -2325,9 +2397,9 @@ tr:hover td {
 .stadium-mound {
   position: absolute;
   left: 50%;
-  top: 56%;
-  width: 50px;
-  height: 50px;
+  top: 52%;
+  width: 48px;
+  height: 48px;
   background: radial-gradient(circle, #853713 0%, #68260a 100%);
   border-radius: 50%;
   transform: translate(-50%, -50%);
@@ -2347,18 +2419,41 @@ tr:hover td {
 
 .stadium-pitcher-badge {
   position: absolute;
-  bottom: -22px;
+  bottom: -26px;
   left: 50%;
   transform: translateX(-50%);
   background: rgba(3, 18, 10, 0.95);
-  border: 1px solid var(--yellow-border);
+  border: 1.5px solid var(--yellow);
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: 5px;
   font-size: 10px;
   color: var(--yellow);
   white-space: nowrap;
   font-weight: 800;
   z-index: 12;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
+}
+
+.pitcher-avatar-slot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #03120a;
+  border: 1px solid var(--yellow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pitcher-avatar-slot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .mound-tag {
@@ -2366,11 +2461,11 @@ tr:hover td {
   color: #03120a;
   padding: 1px 4px;
   border-radius: 2px;
-  margin-right: 4px;
+  margin-right: 2px;
   font-size: 9px;
 }
 
-/* Bases Fijas */
+/* Bases Fijas (Equilibradas para visibilidad 100% en todo dispositivo) */
 .stadium-base {
   position: absolute;
   width: 22px;
@@ -2382,10 +2477,10 @@ tr:hover td {
   z-index: 15;
 }
 
-.stadium-base.base-2b { left: 50%; top: 26%; }
-.stadium-base.base-3b { left: 21%; top: 56%; }
-.stadium-base.base-1b { left: 79%; top: 56%; }
-.stadium-base.base-home { left: 50%; top: 82%; }
+.stadium-base.base-2b { left: 50%; top: 25%; }
+.stadium-base.base-3b { left: 21%; top: 53%; }
+.stadium-base.base-1b { left: 79%; top: 53%; }
+.stadium-base.base-home { left: 50%; top: 78%; }
 
 .base-pillow {
   width: 18px;
@@ -2940,3 +3035,588 @@ tr:hover td {
   border-top: 1px solid var(--line);
   padding-top: 18px;
 }
+
+/* ====================================================
+   ESTILOS ADICIONALES: ACTUALIZACIÓN ROSMIL LEAGUE
+   ==================================================== */
+
+/* 1. Tabla R - H - E en Marcador en Vivo (Requisito 10) */
+.live-rhe-box {
+  margin: 8px auto 6px;
+  background: rgba(3, 18, 10, 0.9);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 4px 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  max-width: 260px;
+}
+
+.rhe-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.rhe-table th {
+  padding: 3px 6px;
+  color: var(--yellow);
+  font-weight: 800;
+  text-align: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  letter-spacing: 0.5px;
+}
+
+.rhe-table th:first-child {
+  text-align: left;
+}
+
+.rhe-table td {
+  padding: 3px 6px;
+  text-align: center;
+  font-weight: 700;
+  color: #fff;
+}
+
+.rhe-table td.rhe-team-lbl {
+  text-align: left;
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 800;
+  font-size: 10px;
+}
+
+.rhe-table td.rhe-val.r {
+  color: var(--yellow);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.rhe-table td.rhe-val.h {
+  color: #60a5fa;
+  font-size: 12px;
+}
+
+.rhe-table td.rhe-val.e {
+  color: #f87171;
+  font-size: 12px;
+}
+
+/* 2. Animaciones de Pelota: Lanzamiento y Trayectorias Reales (Requisitos 1 y 5) */
+.stadium-animated-ball {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  background: radial-gradient(circle at 35% 35%, #ffffff 0%, #e2e8f0 70%, #94a3b8 100%);
+  border-radius: 50%;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.9), 0 2px 4px rgba(0, 0, 0, 0.6);
+  border: 1px solid #dc2626;
+  z-index: 45;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  display: none;
+}
+
+.stadium-animated-ball.pitching {
+  display: block !important;
+  animation: pitchToPlate 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+@keyframes pitchToPlate {
+  0% { top: 52%; left: 50%; transform: translate(-50%, -50%) scale(0.85); opacity: 0; }
+  20% { opacity: 1; }
+  100% { top: 78%; left: 50%; transform: translate(-50%, -50%) scale(1.1); opacity: 1; }
+}
+
+.stadium-animated-ball.fly-single {
+  display: block !important;
+  animation: ballFlySingle 0.8s cubic-bezier(0.2, 0.8, 0.4, 1) forwards;
+}
+
+@keyframes ballFlySingle {
+  0% { top: 78%; left: 50%; transform: translate(-50%, -50%) scale(1.1); }
+  50% { top: 40%; left: 30%; transform: translate(-50%, -50%) scale(1.5); }
+  100% { top: 25%; left: 24%; transform: translate(-50%, -50%) scale(0.9); }
+}
+
+.stadium-animated-ball.fly-double {
+  display: block !important;
+  animation: ballFlyDouble 0.9s cubic-bezier(0.2, 0.8, 0.4, 1) forwards;
+}
+
+@keyframes ballFlyDouble {
+  0% { top: 78%; left: 50%; transform: translate(-50%, -50%) scale(1.1); }
+  50% { top: 32%; left: 32%; transform: translate(-50%, -50%) scale(1.8); }
+  100% { top: 18%; left: 30%; transform: translate(-50%, -50%) scale(0.9); }
+}
+
+.stadium-animated-ball.fly-triple {
+  display: block !important;
+  animation: ballFlyTriple 0.9s cubic-bezier(0.2, 0.8, 0.4, 1) forwards;
+}
+
+@keyframes ballFlyTriple {
+  0% { top: 78%; left: 50%; transform: translate(-50%, -50%) scale(1.1); }
+  50% { top: 30%; left: 70%; transform: translate(-50%, -50%) scale(1.8); }
+  100% { top: 16%; left: 78%; transform: translate(-50%, -50%) scale(0.9); }
+}
+
+.stadium-animated-ball.fly-hr {
+  display: block !important;
+  animation: ballFlyHR 1.2s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+
+@keyframes ballFlyHR {
+  0% { top: 78%; left: 50%; transform: translate(-50%, -50%) scale(1.1); opacity: 1; }
+  50% { top: 25%; left: 50%; transform: translate(-50%, -50%) scale(2.4); }
+  100% { top: -25px; left: 50%; transform: translate(-50%, -50%) scale(1.2); opacity: 0; }
+}
+
+.stadium-animated-ball.fly-groundout {
+  display: block !important;
+  animation: ballFlyGroundout 0.8s ease-in-out forwards;
+}
+
+@keyframes ballFlyGroundout {
+  0% { top: 78%; left: 50%; transform: translate(-50%, -50%) scale(1); }
+  45% { top: 40%; left: 34%; transform: translate(-50%, -50%) scale(0.85); }
+  100% { top: 53%; left: 79%; transform: translate(-50%, -50%) scale(0.8); }
+}
+
+.stadium-animated-ball.fly-flyout {
+  display: block !important;
+  animation: ballFlyFlyout 0.85s cubic-bezier(0.25, 0.8, 0.4, 1) forwards;
+}
+
+@keyframes ballFlyFlyout {
+  0% { top: 78%; left: 50%; transform: translate(-50%, -50%) scale(1); }
+  50% { top: 28%; left: 50%; transform: translate(-50%, -50%) scale(1.8); }
+  100% { top: 12%; left: 50%; transform: translate(-50%, -50%) scale(0.9); }
+}
+
+.stadium-animated-ball.fly-strikeout {
+  display: block !important;
+  animation: ballFlyStrikeout 0.4s ease-out forwards;
+}
+
+@keyframes ballFlyStrikeout {
+  0% { top: 52%; left: 50%; }
+  100% { top: 86%; left: 50%; transform: translate(-50%, -50%) scale(1.1); }
+}
+
+/* 3. Buscador y Filtro de Partidos (Requisito 16) */
+.games-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  background: #061c10;
+  border: 1px solid var(--panel-border);
+  padding: 12px 16px;
+  border-radius: 10px;
+  margin-bottom: 12px;
+}
+
+.games-filter-bar .filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 140px;
+}
+
+.games-filter-bar .filter-field label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--yellow);
+}
+
+.games-filter-bar select, .games-filter-bar input {
+  padding: 8px 10px;
+  font-size: 13px;
+  background: #03120a;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  color: #fff;
+}
+
+.games-filter-status {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 4px 6px;
+  margin-bottom: 14px;
+}
+
+/* 4. Sub-pestañas de Ranking (Requisito 6) */
+.ranking-tab-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.ranking-tab-buttons .tab-btn {
+  padding: 7px 16px;
+  font-size: 13px;
+  font-weight: 800;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: #03120a;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ranking-tab-buttons .tab-btn.active {
+  background: var(--yellow);
+  color: #03120a;
+  border-color: var(--yellow);
+  box-shadow: 0 0 10px rgba(250, 204, 21, 0.4);
+}
+
+/* 5. Selector de Formato en Season Wizard (Requisito 13) */
+.format-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 14px;
+  margin: 18px 0;
+}
+
+.format-option-card {
+  position: relative;
+  background: #04140b;
+  border: 1.5px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.format-option-card:hover {
+  border-color: var(--yellow-border);
+  background: #082416;
+}
+
+.format-option-card.active, .format-option-card:has(input:checked) {
+  border-color: var(--yellow);
+  background: #0a2f1c;
+  box-shadow: 0 0 15px rgba(250, 204, 21, 0.25);
+}
+
+.format-option-card input[type="radio"] {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  accent-color: var(--yellow);
+}
+
+.format-card-icon {
+  font-size: 28px;
+  margin-bottom: 4px;
+}
+
+.format-option-card b {
+  color: var(--yellow);
+  font-size: 15px;
+}
+
+.format-option-card p {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+  margin: 0;
+}
+
+.sw-teams-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: #03120a;
+}
+
+.sw-team-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: #061c10;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sw-team-item:hover {
+  border-color: var(--yellow);
+}
+
+.sw-team-item input[type="checkbox"] {
+  accent-color: var(--yellow);
+}
+
+/* 6. Perfil Interactivo de Temporada (Requisitos 12, 14 y 15) */
+.season-profile-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.season-hero-banner {
+  background: linear-gradient(135deg, #062013 0%, #03120a 100%);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  padding: 24px;
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 24px;
+  align-items: center;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.season-flyer-box {
+  width: 100%;
+  height: 220px;
+  border-radius: 10px;
+  background: #03120a;
+  border: 1.5px solid var(--panel-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
+}
+
+.season-flyer-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.season-flyer-upload-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(3, 18, 10, 0.85);
+  padding: 6px;
+  text-align: center;
+  border-top: 1px solid var(--panel-border);
+}
+
+.season-tabs-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 12px;
+}
+
+.season-tab-btn {
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 800;
+  background: #04140b;
+  border: 1px solid var(--panel-border);
+  color: var(--muted);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.season-tab-btn.active {
+  background: var(--yellow);
+  color: #03120a;
+  border-color: var(--yellow);
+  box-shadow: 0 0 12px rgba(250, 204, 21, 0.35);
+}
+
+/* Cuadro Eliminatorio (Bracket Tree) */
+.bracket-tree-container {
+  display: flex;
+  gap: 30px;
+  overflow-x: auto;
+  padding: 20px 10px;
+  align-items: center;
+}
+
+.bracket-round-col {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 210px;
+}
+
+.bracket-round-title {
+  text-align: center;
+  font-size: 13px;
+  font-weight: 900;
+  color: var(--yellow);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+}
+
+.bracket-series-card {
+  background: #04140b;
+  border: 1.5px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+}
+
+.bracket-series-card.completed {
+  border-color: var(--yellow);
+}
+
+.bracket-team-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+
+.bracket-team-row.winner {
+  background: rgba(250, 204, 21, 0.15);
+  color: var(--yellow);
+}
+
+.bracket-score-badge {
+  font-size: 13px;
+  font-weight: 900;
+  background: #082416;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Premios Oficiales por Temporada (Requisito 14) */
+.season-awards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin-top: 14px;
+}
+
+.season-award-card {
+  background: linear-gradient(135deg, #062013 0%, #03120a 100%);
+  border: 1.5px solid var(--yellow);
+  border-radius: 12px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 8px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+  position: relative;
+  overflow: hidden;
+}
+
+.award-trophy-icon {
+  font-size: 34px;
+  filter: drop-shadow(0 0 10px #facc15);
+}
+
+.award-name-title {
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--yellow);
+  letter-spacing: 0.5px;
+  margin: 0;
+}
+
+.award-player-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 2px solid var(--yellow);
+  object-fit: cover;
+  margin: 4px 0;
+  box-shadow: 0 0 12px rgba(250, 204, 21, 0.5);
+  background: #03120a;
+}
+
+.award-player-name {
+  font-size: 15px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.award-stat-line {
+  font-size: 12px;
+  font-weight: 700;
+  color: #4ade80;
+  background: rgba(34, 197, 94, 0.1);
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+/* 7. Detalle de Jugada Actual en Replay (Requisitos 1 y 5) */
+.current-play-detail-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #04140b;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.play-detail-actors {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.actor-mini-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #061c10;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.actor-mini-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--yellow);
+  object-fit: cover;
+}
+
+/* 8. Responsividad Garantizada (Requisito 2) */
+@media (max-width: 980px) {
+  .live-console-grid {
+    grid-template-columns: 1fr;
+  }
+  .replay-grid-body {
+    grid-template-columns: 1fr;
+  }
+  .season-hero-banner {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+  .season-flyer-box {
+    max-width: 220px;
+    margin: 0 auto;
+  }
+  .stadium-2d-canvas {
+    height: clamp(340px, 45vh, 420px);
+  }
+}
+
