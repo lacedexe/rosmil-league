@@ -1,170 +1,94 @@
-# ⚾ ROSMIL LEAGUE 0.2 — Plataforma Oficial de Béisbol
+# ⚾ ROSMIL LEAGUE 0.3 — Live Scoring, 2D Stadium & Game Replay System
 
 <p align="center">
   <img src="assets/rosmil-logo.png" alt="ROSMIL Baseball League" width="220">
 </p>
 
 <p align="center">
-  <b>SISTEMA DE PARTIDOS, LINEUPS, ESTADÍSTICAS, RBI, LÍDERES Y ADN</b><br>
-  <i>"Tú registras el juego. Nosotros hacemos las estadísticas."</i>
+  <b>LIVE SCORING + GAME TRACKING + 2D REPLAY SYSTEM CON FOTOS REALES DE JUGADORES</b><br>
+  <i>"El partido es la fuente de la verdad: todo lo que ocurre se representa visualmente, se guarda y alimenta las estadísticas de la liga."</i>
 </p>
 
 ---
 
-## 📌 Principio Central de ROSMIL LEAGUE 0.2
+## 🚀 Novedades Principales en ROSMIL LEAGUE 0.3
 
-> **"EL ADMINISTRADOR SOLO REGISTRA LO QUE PASÓ. ROSMIL LEAGUE CALCULA Y ACTUALIZA TODO LO DEMÁS."**
-
-ROSMIL LEAGUE 0.2 elimina por completo la complejidad innecesaria de los scorebooks tradicionales:
-- ❌ **Sin conteo de bolas**
-- ❌ **Sin conteo de strikes**
-- ❌ **Sin conteo manual de lanzamientos**
-- ❌ **Sin formularios complejos ni hojas de cálculo**
-- ❌ **Sin seleccionar manualmente al bateador ni escribir marcadores**
-
-Por cada turno al bate, la interacción se reduce a:
-1. **¿Qué sucedió?** (`HIT` | `DOBLE` | `TRIPLE` | `HOME RUN` | `PONCHE` | `OUT`)
-2. **¿Cuántas carreras remolcó?** (`0` | `1` | `2` | `3` | `4` RBI)
-3. **Confirmar** ➔ El sistema calcula estadísticas, outs, carreras, actualiza líderes, ranking y ADN, y pasa de forma automática al siguiente bateador.
+### 1. 🏟️ Mapa 2D Interactivo del Estadio de Béisbol
+* Representación limpia y moderna tipo videojuego con:
+  * Jardines (LF, CF, RF)
+  * Cuadro de arcilla (*Infield*) y diamante
+  * Montículo del lanzador
+  * Bases claramente distinguidas: **Home Plate ➔ 1B ➔ 2B ➔ 3B**
+* Animación sincronizada de trayectoria de la pelota y carteles dinámicos de jugada:
+  * `HIT ⚾`, `DOBLE 🔥`, `TRIPLE ⚡`, `HOME RUN 🚀`, `PONCHE ❌`, `OUT 🛑`, `BASE POR BOLAS 🚶`, `ERROR ⚠️`, `SACRIFICIO ✈️`.
 
 ---
 
-## 🌟 Novedades Principales en la Versión 0.2
-
-### 1. Asistente de Creación de Partido (Wizard de 6 Pasos)
-La creación del partido se divide en páginas independientes con navegación guiada:
-* **Paso 1 — Datos Generales:** Nombre del partido, competencia/temporada, fecha, hora y estadio.
-* **Paso 2 — Configuración del Partido:** Selección interactiva de cantidad de entradas (1 al 9 o personalizado) y límite de outs por media entrada (por defecto: 3).
-* **Paso 3 — Selección de Equipos:** Definición de Equipo Local (*Home Team*) y Equipo Visitante (*Away Team*), estableciendo automáticamente el orden del partido (visitante batea en la parte alta; local batea en la parte baja).
-* **Paso 4 — Lineup del Equipo Local:** Campo de béisbol interactivo para situar las 9 posiciones en el diamante (`CF`, `LF`, `RF`, `SS`, `2B`, `3B`, `1B`, `P`, `C`) y tabla de orden de bateo del 1 al 9 con botón de autocompletado rápido.
-* **Paso 5 — Lineup del Equipo Visitante:** Mismo sistema visual sobre el diamante y orden de bateo oficial para el equipo visitante.
-* **Paso 6 — Confirmación y Resumen Oficial:** Tarjeta de verificación completa y botón destacado **`⚾ INICIAR PARTIDO ➔`**.
+### 2. 👤 Corredores con Fotos de Perfil Reales
+* **Identidad Visual Completa:** Los corredores en las almohadillas no son círculos genéricos; son las **fotografías reales del perfil de cada jugador**.
+* **Identificación del Jugador:** Cada foto muestra su nombre/apellido, número de camiseta y base que ocupa.
+* **Fallback Elegante:** Si un jugador todavía no tiene fotografía, se genera un avatar con sus iniciales sin romper el diseño.
+* **Vinculación por Player ID:** La relación directa `PLAYER ID ➔ PERFIL ➔ FOTO ➔ EVENTO ➔ POSICIÓN EN EL MAPA` garantiza que al actualizar la foto de un jugador, esta se actualice en toda la aplicación.
+* **Múltiples Corredores Simultáneos:** Las tres bases pueden estar ocupadas a la vez con las fotos de diferentes jugadores sin intercambiarse.
 
 ---
 
-### 2. Consola de Partido en Vivo (Ultra-Rápida y Visual)
-Una interfaz táctil diseñada para operar a pie de campo sin fricción:
-* **Marcador Superior Dinámico:** Muestra carreras de ambos equipos, estado de bateo ("AL BATE" vs "DEFENSIVA") e indicadores luminosos para los 3 outs de la entrada.
-* **Tarjeta de Matchup Activo:** Identifica automáticamente al bateador en turno (según su orden en el lineup) frente al lanzador activo en el montículo.
-* **Botones Gigantes de Acción:** Selección con un toque de `HIT`, `DOBLE`, `TRIPLE`, `HOME RUN`, `PONCHE` y `OUT`.
-* **Selector Rápido de RBI:** Botones dedicados de `0`, `1`, `2`, `3` y `4` carreras impulsadas. Al seleccionar `PONCHE` u `OUT`, el sistema preselecciona inteligentemente `0 RBI`; en `HOME RUN`, preselecciona `1 RBI`.
-* **Continuidad Estricta del Lineup (Regla 26):** El orden al bate nunca se reinicia en el jugador #1 al comenzar una nueva entrada. Si una entrada concluye con el bateador #5, la siguiente entrada para ese equipo inicia automáticamente con el bateador #6.
-* **Control Automático de Outs y Fin de Entrada:** Al registrarse el 3er out, se activa la pantalla de transición **`ENTRADA FINALIZADA`** mostrando el marcador parcial y el botón **`SIGUIENTE ENTRADA ➔`**.
-* **Sustitución Inmediata de Lanzador:** Botón **`🔄 Cambiar Pitcher`** disponible en todo momento para relevar al lanzador activo sin detener el flujo del juego.
-* **Final del Partido:** Al completarse los innings o al pulsar "Finalizar Partido", el sistema proclama al ganador y perdedor y actualiza en cadena toda la base de datos.
+### 3. 🏃‍♂️ Motor Físico de Avance de Corredores
+* **Single (Hit):** Bateador avanza a 1B, corredores avanzan y anota el corredor en 3B.
+* **Doble (2B):** Bateador avanza a 2B, anotan corredores de 2B y 3B.
+* **Triple (3B):** Bateador avanza a 3B, limpian las bases anotando todos los corredores.
+* **Home Run (HR):** El bateador y todos los corredores en base recorren el diamante y anotan carreras; las bases se vacían.
+* **Base por Bolas (BB) / Golpeado (HBP):** Bateador avanza a 1B y se produce avance forzado de corredores (incluyendo carreras forzadas con bases llenas).
+* **Fly de Sacrificio:** Corredor en 3B anota carrera con menos de 2 outs.
+* **Carreras Anotadas:** Todo corredor que anota recibe automáticamente su crédito de carrera anotada (`R`) en su perfil.
 
 ---
 
-### 3. ADN del Jugador & Scouting Report Oficial
-Cada perfil de atleta cuenta con una sección sabermétrica dinámica inspirada en videojuegos deportivos:
-* **Métricas para Bateadores:**
-  * 🎯 **Contacto:** Basado en promedio de bateo oficial (AVG) y ratio de hits.
-  * 💥 **Poder:** Derivado de cuadrangulares (HR), extrabases y slugging (SLG).
-  * 🎯 **Producción:** Eficiencia impulsando carreras (RBI) y carreras anotadas.
-  * 🛡️ **Consistencia:** Disciplina en el plato y control de ponches.
-  * 🧤 **Defensa:** Asignado según posición defensiva principal.
-  * 🔥 **Clutch:** Productividad con corredores y situaciones definitorias.
-  * ⚡ **Velocidad:** Basado en bases robadas oficiales.
-* **Métricas para Lanzadores:**
-  * 🎯 **Control:** Comando de zona y baja tasa de boletos.
-  * 🛑 **Ponches:** Ratio de strikeouts conseguidos por outs registrados.
-  * 🛡️ **Efectividad (ERA):** Desempeño de carreras limpias permitidas.
-  * 🔒 **Dominio (WHIP):** Control de tráfico en bases.
-  * ⏳ **Resistencia:** Volumen de entradas lanzadas.
-* **Regla Fundamental (Reglas 32 y 39 - No Inventar Estadísticas):** Si un jugador no cuenta con turnos o entradas registradas, el sistema no inventa números y despliega el indicador transparente **`DATOS INSUFICIENTES`**.
-* **Diagnóstico de Scouting:** Detección automática de **Fortalezas Principales** (atributos élite) y **Áreas de Desarrollo**.
+### 4. ↩️ Sistema Multinivel de Deshacer y ↪️ Rehacer
+* **↩ Deshacer:** Si el anotador se equivoca de casilla, pulsar "Deshacer" revierte instantáneamente:
+  * Outs
+  * Carreras y marcador
+  * Posiciones de las fotos de los jugadores en las bases
+  * Inning y media entrada
+  * Estadísticas del bateador y lanzador
+  * Registro del evento en el historial
+* **Confirmación de Seguridad:** Cuadro interactivo con el detalle de la jugada a deshacer.
+* **↪ Rehacer:** Permite volver a aplicar jugadas deshechas si se cambia de opinión.
 
 ---
 
-### 4. Líderes de la Liga y Clasificación Automática
-Sección de líderes actualizada de inmediato tras cada jugada registrada:
-* 👑 **Líder de Bateo (AVG)**
-* 💥 **Líder de Hits (H)**
-* 🚀 **Líder de Home Runs (HR)**
-* 🎯 **Líder de Carreras Impulsadas (RBI)**
-* 🛑 **Líder de Ponches Monticulares (SO)**
-* 🛡️ **Líderes de Pitcheo / Efectividad (ERA)**
+### 5. 💾 Persistencia Real y Resiliencia ante Cierres Accidentales
+* **Auto-guardado Inmediato:** Cada jugada se guarda de manera automática en `localStorage` y en **Firebase Firestore**.
+* **Protección ante Cierres de Navegador:** Si la ventana se cierra en el 5to inning con 2 outs y corredores en base, al volver a abrir ROSMIL LEAGUE el banner **`PARTIDO EN VIVO ACTIVO`** permite reanudar el juego exactamente en ese instante con sus fotos en las bases.
+* **Estados Oficiales del Partido:** `SCHEDULED`, `LIVE` y `FINAL`.
 
 ---
 
-### 5. Ranking General de Atletas (Podio de Honor)
-Fórmula de valoración integral que pondera el rendimiento ofensivo, defensivo, monticular y logros deportivos:
-* **Podio Visual:** Tarjetas destacadas para **#1 ORO 🥇**, **#2 PLATA 🥈** y **#3 BRONCE 🥉** con foto, equipo, puntaje de ADN y líneas principales.
-* **Tabla de Clasificación General:** Ranking completo de toda la liga con acceso directo con un clic al ADN de cada deportista.
+### 6. 🎬 Replay 2D del Partido & Resumen Inteligente
+* Disponible desde cada partido en la sección de Juegos mediante el botón **`🎬 Ver Replay 2D`**:
+  * **Reproductor Interactivo:** Controles `⏪ Anterior`, `▶ Reproducir / ⏸ Pausar`, `⏩ Siguiente` y velocidades `0.5x`, `1x`, `2x`.
+  * **Línea de Tiempo (*Timeline Track*):** Barra cronológica con fichas de cada turno para saltar directamente a cualquier jugada.
+  * **Tabla Linescore Oficial:** Marcador entrada por entrada con Carreras (C), Hits (H) y Errores (E).
+  * **Jugadas Destacadas (*Highlights*):** Cuadrangulares, batazos oportunos con múltiples remolcadas y ponches clave con foto del protagonista.
+  * **🏆 MVP del Partido:** Calculado matemáticamente a partir del rendimiento ofensivo y monticular del encuentro.
 
 ---
 
-## 🎨 Identidad Visual Oficial
-
-* **Verde Institucional / Diamante (`#06190f` / `#0d2818`):** Fondo principal y estética de estadio nocturno.
-* **Amarillo Dorado (`#facc15`):** Acentos, botones de confirmación, podio, indicadores destacados y títulos.
-* **Blanco Puro (`#ffffff`):** Tipografía principal, números de marcador y estadísticas sabermétricas.
-
----
-
-## 📁 Arquitectura del Código
-
-```text
-rosmilLeague/
-│
-├── index.html            # Vistas principales, modal del Wizard (Pasos 1-6), Consola en Vivo y Ranking
-├── README.md             # Documentación exhaustiva de ROSMIL LEAGUE 0.2
-├── README.txt            # Ficha técnica resumida
-│
-├── assets/
-│   └── rosmil-logo.png   # Logotipo oficial
-│
-├── css/
-│   └── style.css         # Diamante interactivo, luces de outs, barras animadas de ADN, podio y estilos
-│
-└── js/
-    ├── firebase-config.js # Configuración de Google Cloud Firestore
-    └── app.js             # Motor central de cálculo, live scoring, continuidad de lineup, ranking y ADN
-```
+### 7. 📋 Play-by-Play Interactivo con Fotos
+* Feed cronológico completo de apariciones al plato en la consola en vivo y en la repetición:
+  * Fotografía en miniatura de cada bateador
+  * Entrada y parte (Alta / Baja)
+  * Resultado con etiqueta de color (`Single`, `Double`, `Triple`, `Home Run`, `Walk`, `Strikeout`, `Out`)
+  * Carreras impulsadas (`+1 RBI`, `+2 RBI`, etc.)
+  * Al hacer clic sobre cualquier jugada, el estadio 2D se posiciona en ese momento exacto.
 
 ---
 
-## 📊 Fórmulas y Métricas Sabermétricas
+## 🛠️ Cómo Iniciar la Aplicación
 
-### Métricas Ofensivas
-| Métrica | Definición | Fórmula |
-|---|---|---|
-| **PA** | Apariciones al Plato | Total de turnos al bate registrados en la consola |
-| **AB** | Turnos Oficiales | `PA - (BB + HBP + SF + SH)` |
-| **H** | Hits Conectados | `Sencillos + Dobles + Triples + Cuadrangulares` |
-| **TB** | Bases Totales | `(1B × 1) + (2B × 2) + (3B × 3) + (HR × 4)` |
-| **AVG** | Promedio de Bateo | `H / AB` (formato `.000`) |
-| **SLG** | Slugging | `TB / AB` |
-| **OPS** | On-Base Plus Slugging | `OBP + SLG` |
-| **RBI** | Carreras Impulsadas | Suma de registros oficiales `0-4 RBI` |
-
-### Métricas de Pitcheo
-| Métrica | Definición | Fórmula |
-|---|---|---|
-| **BF** | Bateadores Enfrentados | Total de turnos registrados frente al pitcher |
-| **IP** | Entradas Lanzadas | `(Outs ÷ 3) . (Outs % 3)` (ej. 4.2 entradas) |
-| **SO** | Ponches Conectados | Total de strikeouts producidos |
-| **ERA** | Efectividad | `(ER × 27) / Outs` (base estándar 9 entradas) |
-| **WHIP** | Baserunners por Entrada | `((BB + H) × 9) / Outs` |
-
----
-
-## ☁️ Sincronización en la Nube (Firebase & Offline-First)
-
-* **Almacenamiento Local Seguro (`LocalStorage`):** Garantiza que todos los datos persistan sin conexión a internet.
-* **Cloud Firestore:** Sincronización en tiempo real. Cualquier jugada confirmada en la consola se propaga al instante a todos los dispositivos conectados.
-
----
-
-## 🚀 Puesta en Marcha
-
-1. Abre el directorio del proyecto:
+1. Clona el repositorio o abre la carpeta del proyecto.
+2. Abre `index.html` en cualquier navegador web moderno.
+3. Para operar como Administrador y registrar partidos en vivo, haz clic en el botón superior derecho e introduce el PIN por defecto:
    ```text
-   c:\Users\pinai\Documents\antigravity\rosmilLeague
+   admin123
    ```
-2. Ejecuta `index.html` en tu navegador.
-3. Para iniciar la creación y gestión de partidos, inicia sesión como **Administrador** pulsando el botón superior con el PIN `admin123`.
-
----
-
-*ROSMIL LEAGUE 0.2 — Plataforma Oficial de Béisbol.*

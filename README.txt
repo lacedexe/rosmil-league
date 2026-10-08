@@ -1,48 +1,57 @@
-ROSMIL LEAGUE 0.2 — PLATAFORMA OFICIAL DE BÉISBOL (SISTEMA DE PARTIDOS Y ADN)
+ROSMIL LEAGUE 0.3 — LIVE SCORING + GAME TRACKING + 2D REPLAY SYSTEM
 ================================================================================
 
 DESCRIPCIÓN GENERAL:
-ROSMIL LEAGUE 0.2 es una plataforma moderna de béisbol diseñada bajo el principio:
-"EL ADMINISTRADOR SOLO REGISTRA LO QUE PASÓ. ROSMIL LEAGUE CALCULA Y ACTUALIZA TODO LO DEMÁS."
+ROSMIL LEAGUE 0.3 es una actualización mayor que transforma el sistema en una
+plataforma completa de transmisión en vivo, seguimiento visual 2D y repetición
+interactiva con fotos reales de los atletas.
 
-NOVEDADES DE LA VERSIÓN 0.2:
-1. Eliminación de la Complejidad del Batlog:
-   - Cero conteo de bolas o strikes.
-   - Cero conteo manual de lanzamientos.
-   - Cero formularios complicados de scorebook.
-   - Registro con botones táctiles grandes: HIT, DOBLE, TRIPLE, HOME RUN, PONCHE, OUT.
-   - Selector directo e intuitivo de carreras remolcadas: 0, 1, 2, 3, 4 RBI.
+NOVEDADES DE LA VERSIÓN 0.3:
 
-2. Asistente de Creación de Partido (Wizard de 6 Pasos):
-   - Paso 1: Datos Generales (nombre, competencia, fecha, hora, estadio).
-   - Paso 2: Configuración del Partido (entradas de 1 a 9 o personalizadas, y conteo de outs).
-   - Paso 3: Selección de Equipos (Home Team = Local, Away Team = Visitante).
-   - Paso 4: Lineup Local con campo de béisbol interactivo y orden de bateo 1 al 9.
-   - Paso 5: Lineup Visitante con campo interactivo y orden de bateo 1 al 9.
-   - Paso 6: Resumen oficial y botón directo "INICIAR PARTIDO".
+1. MAPA 2D DEL ESTADIO EN VIVO:
+   - Representación gráfica 2D del diamante de béisbol (outfield, infield de arcilla,
+     líneas de foul, montículo y almohadillas Home, 1B, 2B, 3B).
+   - Animación de trayectoria de pelota y cartel dinámico emergente según la jugada
+     (HIT, DOBLE, TRIPLE, HOME RUN, PONCHE, OUT, BB, ERROR, SACRIFICIO).
 
-3. Consola de Partido en Vivo:
-   - Marcador interactivo superior con estado de bateo e indicadores luminosos de los 3 outs.
-   - Continuidad de lineup estricta: el orden al bate no se reinicia en el jugador #1 cada entrada.
-   - Detección automática del bateador y pitcher activos.
-   - Pantalla de transición al completar los 3 outs con botón "SIGUIENTE ENTRADA".
-   - Botón "Cambiar Pitcher" para sustituciones rápidas en cualquier momento.
-   - Finalización del partido con cálculo y sincronización automática de todo el torneo.
+2. CORREDORES CON FOTOS DE PERFIL REALES:
+   - Los jugadores en las bases aparecen con su fotografía oficial registrada en la liga,
+     acompañados de su nombre y número de camiseta.
+   - Fallback automático con iniciales e identidad de equipo para jugadores sin foto.
+   - Soporte para múltiples corredores simultáneos en las almohadillas sin mezclar fotos.
+   - Vinculación estricta por PLAYER ID: los cambios de foto se reflejan automáticamente.
 
-4. ADN del Jugador & Scouting Report Oficial:
-   - Gráficos y barras animadas con métricas sabermétricas generadas exclusivamente de partidos reales.
-   - Bateadores: Contacto, Poder, Producción, Consistencia, Defensa, Clutch y Velocidad.
-   - Lanzadores: Control, Ponches, Efectividad (ERA), Dominio (WHIP) y Resistencia.
-   - Regla de no inventar estadísticas: despliegue de "DATOS INSUFICIENTES" en atletas sin muestra oficial.
-   - Diagnóstico automático de Fortalezas Principales y Áreas de Desarrollo.
+3. MOTOR FÍSICO DE AVANCE DE CORREDORES:
+   - Single: Bateador a 1B y avance de corredores.
+   - Doble: Bateador a 2B, anotan corredores avanzados.
+   - Triple: Bateador a 3B, vacía bases anotando carreras.
+   - Home Run: Cuadrangular de vuelta completa que limpia las almohadillas.
+   - Base por Bolas (BB) / Golpeado (HBP): Avance forzado (incluyendo carrera forzada con bases llenas).
+   - Fly de Sacrificio: Carrera impulsada desde 3B con menos de 2 outs.
 
-5. Líderes de la Liga y Ranking General de Jugadores:
-   - Tablas automáticas de líderes en AVG, Hits, Home Runs, RBI, Ponches y Efectividad.
-   - Ranking ponderado general con Podio de Honor (#1 Oro, #2 Plata, #3 Bronce) y tabla integral.
+4. SISTEMA MULTINIVEL DE DESHACER (↩) Y REHACER (↪):
+   - Si se comete un error al anotar, el botón "↩ Deshacer" regresa al estado exacto previo:
+     outs, carreras, marcador, posiciones de fotos en las bases y estadísticas.
+   - Confirmación interactiva previa con foto y detalle de la jugada a revertir.
+   - Soporte complementario de "↪ Rehacer".
 
-6. Conexión en la Nube y Modo Offline:
-   - Soporte híbrido: almacenamiento local en LocalStorage y sincronización en tiempo real con Firebase Firestore.
+5. PERSISTENCIA REAL Y RECUPERACIÓN ANTE CIERRES ACCIDENTALES:
+   - Solución definitiva al guardado de partidos: auto-guardado en LocalStorage y Firestore en cada acción.
+   - Si el usuario recarga o cierra el navegador durante un juego en vivo, el banner
+     "PARTIDO EN VIVO ACTIVO" permite reanudarlo exactamente en la entrada, out y corredores donde quedó.
+   - Estados de partido: SCHEDULED, LIVE y FINAL.
+
+6. 2D GAME REPLAY & RESUMEN INTELIGENTE:
+   - Experiencia de repetición visual en el estadio 2D con fotos de perfil de los jugadores.
+   - Controles de reproducción: ⏪ Anterior, ▶ Reproducir / ⏸ Pausar, ⏩ Siguiente y velocidades (0.5x, 1x, 2x).
+   - Timeline cronológico clickeable para saltar a cualquier jugada del partido.
+   - Tabla Linescore oficial por entradas (Carreras, Hits, Errores).
+   - Jugadas Destacadas (Highlights) automáticas (HRs, extrabases, ponches).
+   - MVP del Partido calculado matemáticamente a partir del rendimiento real del juego.
+
+7. PLAY-BY-PLAY CON FOTOGRAFÍAS:
+   - Lista interactiva de todas las acciones con avatar del bateador, clickeable para posicionar el mapa 2D.
 
 CÓMO EJECUTAR:
-Abre el archivo 'index.html' en cualquier navegador web.
-Para acceder a la creación de partidos y administración, utiliza el PIN 'admin123'.
+Abre el archivo 'index.html' en tu navegador web.
+Para acceder a la administración y anotación en vivo, utiliza el PIN 'admin123'.

@@ -136,7 +136,19 @@
               </div>
             </div>
             <div class="notice info">
-              <b>ROSMIL LEAGUE 0.2:</b> Lleva el partido de forma ultrarrápida. Solo registra qué pasó y cuántas carreras remolcó; el sistema calcula automáticamente outs, carreras, marcadores, promedios, líderes, rankings y ADN.
+              <b>ROSMIL LEAGUE 0.3:</b> Sistema interactivo con Estadio 2D en vivo, fotos reales de perfil en las bases, Play-by-Play, Replay y recuperación automática ante recargas.
+            </div>
+            <!-- Banner de Partido en Vivo Activo -->
+            <div id="activeLiveGameBanner" class="active-live-banner" style="display:none">
+              <div class="banner-left">
+                <span class="live-pulse">🔴 EN VIVO</span>
+                <div>
+                  <b id="liveBannerTitle">Visitante vs Local</b>
+                  <div class="muted" style="font-size:12px" id="liveBannerMeta">Inning 1 Alta • 0 Outs</div>
+                </div>
+                <div class="live-banner-score" id="liveBannerScore">0 — 0</div>
+              </div>
+              <button type="button" class="btn yellow" id="btnResumeActiveGame">⚡ Continuar Partido en Vivo ➔</button>
             </div>
             <div id="gamesList"></div>
           </div>
@@ -905,7 +917,7 @@
     </div>
   </div>
 
-  <!-- Modal: Consola de Partido en Vivo (Ultra Rápida y Visual) -->
+  <!-- Modal: Consola de Partido en Vivo (ROSMIL LEAGUE 0.3 - Ultra Rápida con Estadio 2D) -->
   <div class="modal" id="liveGameModal">
     <div class="modalbox large live-game-console">
       <!-- Marcador Principal Superior -->
@@ -942,84 +954,185 @@
         </div>
       </div>
 
-      <!-- Tarjeta de Enfrentamiento Activo -->
-      <div class="live-matchup-bar">
-        <div class="matchup-box batter-side">
-          <small>BATEADOR ACTUAL</small>
-          <div class="matchup-person">
-            <span class="matchup-avatar" id="liveBatterPhoto">👤</span>
-            <div>
-              <b id="liveBatterName">Bateador</b>
-              <span class="matchup-meta" id="liveBatterMeta">#1 en orden • Turno 1</span>
+      <!-- Layout Central: Estadio 2D + Controles del Partido -->
+      <div class="live-console-grid">
+        <!-- Columna Izquierda: Mapa 2D del Estadio con Fotos Reales en las Bases -->
+        <div class="live-stadium-card">
+          <div class="stadium-card-header">
+            <span>⚾ DIAMANTE 2D EN VIVO</span>
+            <span class="stadium-runners-pill" id="liveRunnersPill">Bases Limpias</span>
+          </div>
+
+          <div class="stadium-2d-canvas" id="liveStadiumCanvas">
+            <!-- Outfield & Warning Track -->
+            <div class="stadium-outfield-turf"></div>
+            <div class="stadium-warning-strip"></div>
+            
+            <!-- Posiciones de Jardineros -->
+            <span class="stadium-pos-tag cf">CF</span>
+            <span class="stadium-pos-tag lf">LF</span>
+            <span class="stadium-pos-tag rf">RF</span>
+            <span class="stadium-pos-tag ss">SS</span>
+            <span class="stadium-pos-tag b2">2B</span>
+            <span class="stadium-pos-tag b3">3B</span>
+            <span class="stadium-pos-tag b1">1B</span>
+
+            <!-- Infield Arcilla y Césped Interior -->
+            <div class="stadium-clay-diamond"></div>
+            <div class="stadium-inner-turf"></div>
+
+            <!-- Líneas de Cal (Foul Lines) -->
+            <div class="stadium-foul-line foul-left"></div>
+            <div class="stadium-foul-line foul-right"></div>
+
+            <!-- Montículo de Lanzador (Pitcher) -->
+            <div class="stadium-mound">
+              <div class="mound-rubber"></div>
+              <div class="stadium-pitcher-badge" id="liveMoundPitcherBadge" title="Pitcher en montículo">
+                <span class="mound-tag">P</span>
+                <span class="mound-name" id="liveMoundPitcherName">Pitcher</span>
+              </div>
+            </div>
+
+            <!-- Bases y Ranuras de Corredores (FOTOS DE PERFIL REALES) -->
+            <!-- 2da Base (Top) -->
+            <div class="stadium-base base-2b" id="liveBase2B">
+              <div class="base-pillow"></div>
+              <div class="base-runner-slot" id="liveRunnerSlot2B"></div>
+            </div>
+
+            <!-- 3ra Base (Left) -->
+            <div class="stadium-base base-3b" id="liveBase3B">
+              <div class="base-pillow"></div>
+              <div class="base-runner-slot" id="liveRunnerSlot3B"></div>
+            </div>
+
+            <!-- 1ra Base (Right) -->
+            <div class="stadium-base base-1b" id="liveBase1B">
+              <div class="base-pillow"></div>
+              <div class="base-runner-slot" id="liveRunnerSlot1B"></div>
+            </div>
+
+            <!-- Home Plate (Bottom) -->
+            <div class="stadium-base base-home" id="liveBaseHome">
+              <div class="base-homeplate"></div>
+              <div class="base-runner-slot" id="liveRunnerSlotHome"></div>
+            </div>
+
+            <!-- Pelota Animada -->
+            <div class="stadium-animated-ball" id="liveStadiumBall" style="display:none"></div>
+
+            <!-- Splash / Banner Animado de Jugada en el Campo -->
+            <div class="stadium-play-splash" id="liveStadiumSplash" style="display:none">
+              <div class="splash-icon">💥</div>
+              <div class="splash-text">HOME RUN</div>
             </div>
           </div>
         </div>
-        <div class="matchup-vs">VS</div>
-        <div class="matchup-box pitcher-side">
-          <small>LANZADOR EN EL MONTÍCULO</small>
-          <div class="matchup-person">
-            <span class="matchup-avatar" id="livePitcherPhoto">👤</span>
-            <div>
-              <b id="livePitcherName">Pitcher</b>
-              <span class="matchup-meta" id="livePitcherMeta">Pitcher Activo</span>
+
+        <!-- Columna Derecha: Tarjeta de Enfrentamiento y Casillas de Jugada -->
+        <div class="live-action-col">
+          <!-- Tarjeta de Enfrentamiento Activo (Bateador vs Pitcher) -->
+          <div class="live-matchup-bar">
+            <div class="matchup-box batter-side">
+              <small>BATEADOR ACTUAL</small>
+              <div class="matchup-person">
+                <span class="matchup-avatar" id="liveBatterPhoto">👤</span>
+                <div>
+                  <b id="liveBatterName">Bateador</b>
+                  <span class="matchup-meta" id="liveBatterMeta">#1 en orden • Turno 1</span>
+                </div>
+              </div>
+            </div>
+            <div class="matchup-vs">VS</div>
+            <div class="matchup-box pitcher-side">
+              <small>LANZADOR EN EL MONTÍCULO</small>
+              <div class="matchup-person">
+                <span class="matchup-avatar" id="livePitcherPhoto">👤</span>
+                <div>
+                  <b id="livePitcherName">Pitcher</b>
+                  <span class="matchup-meta" id="livePitcherMeta">Pitcher Activo</span>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      <!-- INTERFAZ CENTRAL: ¿QUÉ SUCEDIÓ? -->
-      <div class="live-play-box" id="livePlayBox">
-        <div class="live-section-title">¿QUÉ SUCEDIÓ?</div>
-        <div class="play-results-grid">
-          <button type="button" class="btn-play-action" data-action="Single">
-            <span class="play-icon">⚾</span>
-            <b>HIT</b>
-            <small>Sencillo</small>
-          </button>
-          <button type="button" class="btn-play-action" data-action="Double">
-            <span class="play-icon">🥈</span>
-            <b>DOBLE</b>
-            <small>2B</small>
-          </button>
-          <button type="button" class="btn-play-action" data-action="Triple">
-            <span class="play-icon">🥉</span>
-            <b>TRIPLE</b>
-            <small>3B</small>
-          </button>
-          <button type="button" class="btn-play-action highlight-hr" data-action="Home Run">
-            <span class="play-icon">💥</span>
-            <b>HOME RUN</b>
-            <small>Cuadrangular</small>
-          </button>
-          <button type="button" class="btn-play-action strikeout" data-action="Strikeout Swinging">
-            <span class="play-icon">🛑</span>
-            <b>PONCHE</b>
-            <small>Strikeout (K)</small>
-          </button>
-          <button type="button" class="btn-play-action out" data-action="Groundout">
-            <span class="play-icon">❌</span>
-            <b>OUT</b>
-            <small>Batazo / Fildeo</small>
-          </button>
-        </div>
+          <!-- INTERFAZ CENTRAL: ¿QUÉ SUCEDIÓ? -->
+          <div class="live-play-box" id="livePlayBox">
+            <div class="live-section-title">¿QUÉ SUCEDIÓ EN ESTE TURNO?</div>
+            <div class="play-results-grid">
+              <button type="button" class="btn-play-action" data-action="Single">
+                <span class="play-icon">⚾</span>
+                <b>HIT</b>
+                <small>Sencillo</small>
+              </button>
+              <button type="button" class="btn-play-action" data-action="Double">
+                <span class="play-icon">🥈</span>
+                <b>DOBLE</b>
+                <small>2B</small>
+              </button>
+              <button type="button" class="btn-play-action" data-action="Triple">
+                <span class="play-icon">🥉</span>
+                <b>TRIPLE</b>
+                <small>3B</small>
+              </button>
+              <button type="button" class="btn-play-action highlight-hr" data-action="Home Run">
+                <span class="play-icon">💥</span>
+                <b>HOME RUN</b>
+                <small>Cuadrangular</small>
+              </button>
+              <button type="button" class="btn-play-action strikeout" data-action="Strikeout Swinging">
+                <span class="play-icon">🛑</span>
+                <b>PONCHE</b>
+                <small>Strikeout (K)</small>
+              </button>
+              <button type="button" class="btn-play-action out" data-action="Groundout">
+                <span class="play-icon">❌</span>
+                <b>OUT</b>
+                <small>Batazo / Fildeo</small>
+              </button>
+              <button type="button" class="btn-play-action walk" data-action="Walk">
+                <span class="play-icon">🚶</span>
+                <b>BB</b>
+                <small>Base x Bolas</small>
+              </button>
+              <button type="button" class="btn-play-action error-act" data-action="Error">
+                <span class="play-icon">⚠️</span>
+                <b>ERROR</b>
+                <small>Fildeo Defensivo</small>
+              </button>
+              <button type="button" class="btn-play-action sac" data-action="Sac Fly">
+                <span class="play-icon">🛡️</span>
+                <b>SAC</b>
+                <small>Sacrificio</small>
+              </button>
+            </div>
 
-        <!-- SELECCIÓN DE RBI -->
-        <div class="live-rbi-box" id="liveRbiSection">
-          <div class="live-section-title">¿CUÁNTAS CARRERAS REMOLCÓ? (RBI)</div>
-          <div class="rbi-buttons-grid">
-            <button type="button" class="btn-rbi-opt active" data-rbi="0">0 RBI</button>
-            <button type="button" class="btn-rbi-opt" data-rbi="1">1 RBI</button>
-            <button type="button" class="btn-rbi-opt" data-rbi="2">2 RBI</button>
-            <button type="button" class="btn-rbi-opt" data-rbi="3">3 RBI</button>
-            <button type="button" class="btn-rbi-opt" data-rbi="4">4 RBI</button>
+            <!-- SELECCIÓN DE RBI -->
+            <div class="live-rbi-box" id="liveRbiSection">
+              <div class="live-section-title">¿CUÁNTAS CARRERAS REMOLCÓ? (RBI)</div>
+              <div class="rbi-buttons-grid">
+                <button type="button" class="btn-rbi-opt active" data-rbi="0">0 RBI</button>
+                <button type="button" class="btn-rbi-opt" data-rbi="1">1 RBI</button>
+                <button type="button" class="btn-rbi-opt" data-rbi="2">2 RBI</button>
+                <button type="button" class="btn-rbi-opt" data-rbi="3">3 RBI</button>
+                <button type="button" class="btn-rbi-opt" data-rbi="4">4 RBI</button>
+              </div>
+            </div>
+
+            <!-- Botones de Acción: DESHACER, REHACER y CONFIRMAR JUGADA -->
+            <div class="live-actions-bar">
+              <button type="button" class="btn btn-undo" id="btnLiveUndo" title="Deshacer última jugada (Ctrl+Z)">
+                ↩ Deshacer
+              </button>
+              <button type="button" class="btn btn-redo" id="btnLiveRedo" title="Rehacer jugada deshecha (Ctrl+Y)">
+                ↪ Rehacer
+              </button>
+              <button type="button" class="btn yellow btn-confirm-play" id="btnConfirmLivePlay">
+                CONFIRMAR JUGADA ➔
+              </button>
+            </div>
           </div>
-        </div>
-
-        <!-- Botón de Confirmación de Jugada -->
-        <div style="margin-top:20px; text-align:center">
-          <button type="button" class="btn yellow btn-confirm-play" id="btnConfirmLivePlay">
-            CONFIRMAR JUGADA Y SIGUIENTE BATEADOR ➔
-          </button>
         </div>
       </div>
 
@@ -1040,18 +1153,24 @@
         <h2 style="color:var(--yellow); font-size:32px; margin:10px 0;">FINAL DEL PARTIDO</h2>
         <div class="overlay-scoreboard" id="liveGameOverScore">TIGRES 7 — 4 LEONES</div>
         <div id="liveWinnerLoserBadge" style="margin:16px 0; font-size:18px;"></div>
-        <button type="button" class="btn yellow btn-large-start" id="btnLiveCloseGameOver">
-          GUARDAR Y VER RESUMEN ➔
-        </button>
+        <div class="formactions" style="justify-content:center; gap:14px; margin-top:20px;">
+          <button type="button" class="btn blue" id="btnLiveGoToReplayFromOver">🎬 Ver Replay 2D</button>
+          <button type="button" class="btn yellow btn-large-start" id="btnLiveCloseGameOver">
+            GUARDAR Y SALIR ➔
+          </button>
+        </div>
       </div>
 
-      <!-- Historial Reciente de la Entrada -->
+      <!-- Historial y Play-by-Play de la Entrada con Fotos Reales -->
       <div class="live-log-tray">
         <div class="head">
-          <small>JUGADAS REGISTRADAS EN ESTE PARTIDO (<span id="livePlayCount">0</span>)</small>
-          <button type="button" class="btn btn-sm danger" id="btnLiveFinishGameEarly">Finalizar Partido Ahora</button>
+          <small>PLAY-BY-PLAY EN VIVO (<span id="livePlayCount">0</span> jugadas registradas)</small>
+          <div class="actions">
+            <button type="button" class="btn btn-sm blue" id="btnLiveOpenReplay">🎬 Ver Replay 2D</button>
+            <button type="button" class="btn btn-sm danger" id="btnLiveFinishGameEarly">Finalizar Partido Ahora</button>
+          </div>
         </div>
-        <div class="live-log-items" id="liveLogList"></div>
+        <div class="live-pbp-container" id="liveLogList"></div>
       </div>
     </div>
   </div>
@@ -1069,6 +1188,137 @@
         <button type="button" class="btn close">Cancelar</button>
         <button type="button" class="btn yellow" id="btnConfirmPitcherChange">CONFIRMAR CAMBIO</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Modal: 2D Game Replay & Resumen Oficial (ROSMIL LEAGUE 0.3) -->
+  <div class="modal" id="gameReplayModal">
+    <div class="modalbox large replay-modal-box">
+      <!-- Encabezado del Replay -->
+      <div class="replay-header">
+        <div class="replay-header-info">
+          <div class="eyebrow" style="color:var(--yellow)">ROSMIL LEAGUE 0.3 • 2D GAME REPLAY & RESUMEN INTERACTIVO</div>
+          <h2 id="replayGameTitle" style="margin:2px 0 6px">Visitante vs Local</h2>
+          <div class="muted" id="replayGameMeta">Estadio Quisqueya • Temporada 2026</div>
+        </div>
+        <div class="actions">
+          <button type="button" class="btn close" id="btnCloseReplayModal">✕ Cerrar Replay</button>
+        </div>
+      </div>
+
+      <!-- Linescore Table (Inning por Inning) -->
+      <div class="linescore-wrap" id="replayLinescoreWrap"></div>
+
+      <!-- Cuerpo Principal del Replay -->
+      <div class="replay-grid-body">
+        <!-- Panel Izquierdo: Estadio 2D Interactivo con Reproductor -->
+        <div class="replay-stadium-panel">
+          <div class="stadium-card-header">
+            <span>⚾ REPLAY 2D • SIMULACIÓN JUGADA A JUGADA</span>
+            <span class="stadium-runners-pill" id="replayEventCountBadge">Jugada 0 de 0</span>
+          </div>
+
+          <div class="stadium-2d-canvas" id="replayStadiumCanvas">
+            <!-- Outfield & Diamond structure -->
+            <div class="stadium-outfield-turf"></div>
+            <div class="stadium-warning-strip"></div>
+            <span class="stadium-pos-tag cf">CF</span>
+            <span class="stadium-pos-tag lf">LF</span>
+            <span class="stadium-pos-tag rf">RF</span>
+            <span class="stadium-pos-tag ss">SS</span>
+            <span class="stadium-pos-tag b2">2B</span>
+            <span class="stadium-pos-tag b3">3B</span>
+            <span class="stadium-pos-tag b1">1B</span>
+
+            <div class="stadium-clay-diamond"></div>
+            <div class="stadium-inner-turf"></div>
+            <div class="stadium-foul-line foul-left"></div>
+            <div class="stadium-foul-line foul-right"></div>
+            
+            <div class="stadium-mound">
+              <div class="mound-rubber"></div>
+              <div class="stadium-pitcher-badge" id="replayMoundPitcherBadge">
+                <span class="mound-tag">P</span>
+                <span class="mound-name" id="replayMoundPitcherName">Pitcher</span>
+              </div>
+            </div>
+
+            <!-- Bases & Runners with Real Profile Photos -->
+            <div class="stadium-base base-2b" id="replayBase2B">
+              <div class="base-pillow"></div>
+              <div class="base-runner-slot" id="replayRunnerSlot2B"></div>
+            </div>
+            <div class="stadium-base base-3b" id="replayBase3B">
+              <div class="base-pillow"></div>
+              <div class="base-runner-slot" id="replayRunnerSlot3B"></div>
+            </div>
+            <div class="stadium-base base-1b" id="replayBase1B">
+              <div class="base-pillow"></div>
+              <div class="base-runner-slot" id="replayRunnerSlot1B"></div>
+            </div>
+            <div class="stadium-base base-home" id="replayBaseHome">
+              <div class="base-homeplate"></div>
+              <div class="base-runner-slot" id="replayRunnerSlotHome"></div>
+            </div>
+
+            <!-- Pelota de Béisbol y Splash en Replay -->
+            <div class="stadium-animated-ball" id="replayStadiumBall" style="display:none"></div>
+            <div class="stadium-play-splash" id="replayStadiumSplash" style="display:none">
+              <div class="splash-icon">⚾</div>
+              <div class="splash-text">HIT</div>
+            </div>
+          </div>
+
+          <!-- Banner Informativo del Evento Actual del Replay -->
+          <div class="replay-narrative-banner" id="replayNarrativeBanner">
+            <span class="narrative-inn" id="replayNarrativeInn">Inn 1▲</span>
+            <span class="narrative-text" id="replayNarrativeText">Selecciona reproducir o una jugada de la línea de tiempo.</span>
+          </div>
+
+          <!-- Controles de Reproducción 2D -->
+          <div class="replay-controls-bar">
+            <button type="button" class="btn btn-ctrl" id="btnReplayPrev" title="Jugada anterior">⏪ Anterior</button>
+            <button type="button" class="btn yellow btn-ctrl" id="btnReplayPlayToggle">▶ Reproducir</button>
+            <button type="button" class="btn btn-ctrl" id="btnReplayNext" title="Siguiente jugada">⏩ Siguiente</button>
+            
+            <div class="speed-selector">
+              <span class="muted" style="font-size:12px">Velocidad:</span>
+              <button type="button" class="speed-btn" data-speed="0.5">0.5x</button>
+              <button type="button" class="speed-btn active" data-speed="1">1x</button>
+              <button type="button" class="speed-btn" data-speed="2">2x</button>
+            </div>
+          </div>
+
+          <!-- Timeline Interactivo Clickable -->
+          <div class="replay-timeline-container">
+            <div class="timeline-header">
+              <small>LÍNEA DE TIEMPO DEL PARTIDO (Haz clic en cualquier jugada)</small>
+            </div>
+            <div class="replay-timeline-track" id="replayTimelineTrack"></div>
+          </div>
+        </div>
+
+        <!-- Panel Derecho: Highlights Inteligentes, MVP y Play-by-Play -->
+        <div class="replay-sidebar">
+          <!-- MVP Oficial del Partido Calculado -->
+          <div class="replay-mvp-card" id="replayMvpArea"></div>
+
+          <!-- Resumen Inteligente: Jugadas Destacadas -->
+          <div class="replay-highlights-panel">
+            <h4>🌟 JUGADAS DESTACADAS</h4>
+            <div class="highlights-list" id="replayHighlightsList"></div>
+          </div>
+
+          <!-- Play-by-Play Completo -->
+          <div class="replay-pbp-panel">
+            <h4>📋 PLAY-BY-PLAY DETALLADO</h4>
+            <div class="pbp-events-scroll" id="replayPbpList"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Boxscore Detallado al fondo -->
+      <div class="replay-boxscore-section" id="replayBoxscoreArea"></div>
     </div>
   </div>
 

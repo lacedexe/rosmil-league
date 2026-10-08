@@ -37,15 +37,17 @@
     }
   };
 
-  // Estado de permisos y navegación interna
-  let isAdmin = sessionStorage.getItem('rosmil_is_admin') === 'true';
+  // Estado de permisos y navegación interna (Persistencia cruzada en localStorage)
+  let isAdmin =
+    sessionStorage.getItem('rosmil_is_admin') === 'true' ||
+    localStorage.getItem('rosmil_is_admin') === 'true';
   let activeTeamId = null;
   let activePlayerId = null;
   let activePlayerTab = 'batting'; // 'batting' | 'pitching'
   let compareTeamId = null;
   let pendingDeleteAction = null;
 
-  // Estado del Asistente de Partidos Paso a Paso (ROSMIL LEAGUE 0.2)
+  // Estado del Asistente de Partidos Paso a Paso (ROSMIL LEAGUE 0.2 / 0.3)
   let wizardState = {
     step: 1,
     gameName: '',
@@ -63,7 +65,7 @@
     awayBattingOrder: []
   };
 
-  // Estado de la Consola de Juego en Vivo (ROSMIL LEAGUE 0.2)
+  // Estado de la Consola de Juego en Vivo (ROSMIL LEAGUE 0.3 - 2D Live Diamond & Persistence)
   let liveGameState = {
     active: false,
     gameId: null,
@@ -78,7 +80,20 @@
     activePitcherAway: null,
     activePitcherHome: null,
     selectedPlayResult: 'Single',
-    selectedRbi: 0
+    selectedRbi: 0,
+    runners: { '1B': null, '2B': null, '3B': null },
+    undoStack: [],
+    redoStack: []
+  };
+
+  // Estado del Reproductor y Resumen 2D (ROSMIL LEAGUE 0.3 - 2D Replay & Summary)
+  let replayState = {
+    game: null,
+    events: [],
+    currentIndex: 0,
+    isPlaying: false,
+    intervalId: null,
+    speed: 1 // 0.5x, 1x, 2x
   };
 
   // Load persisted state
@@ -235,17 +250,15 @@
   }
 
   function save() {
-    // Validación estricta en el motor: No permitir guardar si no es administrador
-    if (!isAdmin) {
-      console.warn('Operación rechazada: Solo el administrador puede modificar datos.');
-      return;
-    }
+    db.updatedAt = Date.now();
 
     try {
       localStorage.setItem(KEY, JSON.stringify(db));
+      if (liveGameState.active && liveGameState.gameId) {
+        localStorage.setItem('rosmil_active_game_id', liveGameState.gameId);
+      }
     } catch (e) {
       console.error('Error guardando en localStorage:', e);
-      alert('Aviso: Almacenamiento local lleno o restringido.');
     }
     renderAll();
 
@@ -391,6 +404,13 @@
       s.R += Number(pa.runs) || 0;
       s.RBI += Number(pa.rbi) || 0;
       s.SB += Number(pa.sb) || 0;
+    });
+
+    // Contabilizar carreras anotadas como corredor en turnos de otros bateadores
+    sourcePAs.forEach(pa => {
+      if (pa.batter !== pid && Array.isArray(pa.scoringRunners) && pa.scoringRunners.includes(pid)) {
+        s.R++;
+      }
     });
 
     s.AVG = s.AB ? s.H / s.AB : 0;
@@ -1992,7 +2012,8 @@
       homeLineup: wizardState.homeBattingOrder.filter(Boolean),
       awayLineup: wizardState.awayBattingOrder.filter(Boolean),
       batLog: [],
-      status: 'En curso'
+      runners: { '1B': null, '2B': null, '3B': null },
+      status: 'LIVE'
     };
 
     if (!g.homeLineup.length) {
@@ -2003,13 +2024,232 @@
     }
 
     db.games.push(g);
+    localStorage.setItem('rosmil_active_game_id', gid);
     save();
     closeModals();
     initLiveGame(gid);
   }
 
   // ----------------------------------------------------
-  // CONSOLA DE PARTIDO EN VIVO (ROSMIL LEAGUE 0.2 - INTERFAZ ULTRA-RÁPIDA)
+  // MOTOR 2D: CORREDORES, FOTOS REALES Y FÍSICA DE BÉISBOL (ROSMIL LEAGUE 0.3)
+  // ----------------------------------------------------
+  function createRunnerBadgeHTML(playerId) {
+    if (!playerId) return '';
+    const p = db.players.find(x => x.id === playerId);
+    if (!p) return '';
+    const name = esc(p.name || 'Jugador');
+    const firstName = esc((p.name || '').split(' ')[0] || 'Jugador');
+    const num = p.number !== '' && p.number != null ? `#${esc(p.number)}` : '';
+    const initials = (p.name || '')
+      .split(' ')
+      .filter(Boolean)
+      .slice(0, 2)
+      .map(w => w[0].toUpperCase())
+      .join('') || '⚾';
+
+    if (p.photo) {
+      return `
+        <div class="stadium-runner-node" data-player-id="${p.id}" title="${name} ${num}">
+          <img class="runner-avatar-img" src="${p.photo}" alt="${name}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+          <div class="runner-avatar-fallback" style="display:none">${initials}</div>
+          <span class="runner-name-tag">${firstName} ${num}</span>
+        </div>`;
+    } else {
+      return `
+        <div class="stadium-runner-node" data-player-id="${p.id}" title="${name} ${num}">
+          <div class="runner-avatar-fallback">${initials}</div>
+          <span class="runner-name-tag">${firstName} ${num}</span>
+        </div>`;
+    }
+  }
+
+  function renderStadiumDiamond(prefix, runners, pitcherId = null, batterId = null) {
+    const r = runners || { '1B': null, '2B': null, '3B': null };
+    const bases = ['1B', '2B', '3B'];
+
+    bases.forEach(base => {
+      const slot = $(`#${prefix}RunnerSlot${base}`);
+      if (!slot) return;
+      const pid = r[base];
+      if (pid) {
+        slot.classList.add('occupied');
+        slot.innerHTML = createRunnerBadgeHTML(pid);
+      } else {
+        slot.classList.remove('occupied');
+        slot.innerHTML = '';
+      }
+    });
+
+    const homeSlot = $(`#${prefix}RunnerSlotHome`);
+    if (homeSlot) {
+      if (batterId) {
+        homeSlot.innerHTML = createRunnerBadgeHTML(batterId);
+        homeSlot.classList.add('at-bat');
+      } else {
+        homeSlot.innerHTML = '';
+        homeSlot.classList.remove('at-bat');
+      }
+    }
+
+    const moundSlot = $(`#${prefix}PitcherMoundNode`);
+    if (moundSlot && pitcherId) {
+      const p = db.players.find(x => x.id === pitcherId);
+      if (p) {
+        moundSlot.title = `Lanzador: ${p.name}`;
+      }
+    }
+  }
+
+  function triggerStadiumAnimation(prefix, action, rbi, isHR) {
+    const splash = $(`#${prefix}ActionSplash`);
+    const ball = $(`#${prefix}BallNode`);
+
+    let text = 'JUGADA';
+    let typeClass = 'single';
+
+    if (isHR) {
+      text = `🚀 HOME RUN! +${rbi || 1} CA`;
+      typeClass = 'hr';
+    } else if (action === 'Triple') {
+      text = '⚡ TRIPLE (3B)!';
+      typeClass = 'triple';
+    } else if (action === 'Double') {
+      text = '🔥 DOBLE (2B)!';
+      typeClass = 'double';
+    } else if (action === 'Single') {
+      text = '⚾ HIT!';
+      typeClass = 'single';
+    } else if (action.includes('Strikeout')) {
+      text = '❌ PONCHE (SO)!';
+      typeClass = 'strikeout';
+    } else if (action.includes('out')) {
+      text = '🛑 OUT!';
+      typeClass = 'out';
+    } else if (action === 'Walk' || action === 'HBP') {
+      text = '🚶 BASE POR BOLAS';
+      typeClass = 'walk';
+    } else if (action === 'Reached Error') {
+      text = '⚠️ ERROR DEFENSIVO';
+      typeClass = 'error';
+    } else if (action === 'Sac Fly' || action === 'Sac Bunt') {
+      text = '✈️ SACRIFICIO';
+      typeClass = 'sac';
+    }
+
+    if (splash) {
+      splash.textContent = text;
+      splash.className = `stadium-play-splash active ${typeClass}`;
+    }
+
+    if (ball) {
+      ball.className = `stadium-animated-ball active fly-${typeClass}`;
+    }
+
+    setTimeout(() => {
+      if (splash) splash.classList.remove('active');
+      if (ball) ball.className = 'stadium-animated-ball';
+    }, 1100);
+  }
+
+  function advanceRunners(currentRunners, result, batterId, explicitRbi = 0) {
+    const prev = {
+      '1B': currentRunners?.['1B'] || null,
+      '2B': currentRunners?.['2B'] || null,
+      '3B': currentRunners?.['3B'] || null
+    };
+    const next = { '1B': null, '2B': null, '3B': null };
+    const scoringPlayerIds = [];
+
+    const isHR = result === 'Home Run';
+    const isTriple = result === 'Triple';
+    const isDouble = result === 'Double';
+    const isSingle = result === 'Single';
+    const isWalk = result === 'Walk' || result === 'HBP';
+    const isSacFly = result === 'Sac Fly';
+    const isError = result === 'Reached Error';
+    const isOut = result.includes('out') || result.includes('Strikeout');
+
+    if (isHR) {
+      if (prev['3B']) scoringPlayerIds.push(prev['3B']);
+      if (prev['2B']) scoringPlayerIds.push(prev['2B']);
+      if (prev['1B']) scoringPlayerIds.push(prev['1B']);
+      if (batterId) scoringPlayerIds.push(batterId);
+    } else if (isTriple) {
+      if (prev['3B']) scoringPlayerIds.push(prev['3B']);
+      if (prev['2B']) scoringPlayerIds.push(prev['2B']);
+      if (prev['1B']) scoringPlayerIds.push(prev['1B']);
+      next['3B'] = batterId;
+    } else if (isDouble) {
+      if (prev['3B']) scoringPlayerIds.push(prev['3B']);
+      if (prev['2B']) scoringPlayerIds.push(prev['2B']);
+      if (prev['1B']) {
+        if (explicitRbi >= 3 || (explicitRbi >= 2 && !prev['2B'] && !prev['3B'])) {
+          scoringPlayerIds.push(prev['1B']);
+        } else {
+          next['3B'] = prev['1B'];
+        }
+      }
+      next['2B'] = batterId;
+    } else if (isSingle) {
+      if (prev['3B']) scoringPlayerIds.push(prev['3B']);
+      if (prev['2B']) {
+        if (explicitRbi >= 2 || (explicitRbi === 1 && !prev['3B'])) {
+          scoringPlayerIds.push(prev['2B']);
+        } else {
+          next['3B'] = prev['2B'];
+        }
+      }
+      if (prev['1B']) {
+        if (!next['2B']) next['2B'] = prev['1B'];
+        else if (!next['3B']) next['3B'] = prev['1B'];
+      }
+      next['1B'] = batterId;
+    } else if (isWalk) {
+      next['1B'] = batterId;
+      if (prev['1B']) {
+        next['2B'] = prev['1B'];
+        if (prev['2B']) {
+          next['3B'] = prev['2B'];
+          if (prev['3B']) {
+            scoringPlayerIds.push(prev['3B']);
+          }
+        } else {
+          next['3B'] = prev['3B'];
+        }
+      } else {
+        next['2B'] = prev['2B'];
+        next['3B'] = prev['3B'];
+      }
+    } else if (isSacFly) {
+      if (prev['3B']) scoringPlayerIds.push(prev['3B']);
+      next['2B'] = prev['2B'];
+      next['1B'] = prev['1B'];
+    } else if (isError) {
+      if (prev['3B']) scoringPlayerIds.push(prev['3B']);
+      if (prev['2B']) next['3B'] = prev['2B'];
+      if (prev['1B']) next['2B'] = prev['1B'];
+      next['1B'] = batterId;
+    } else if (isOut) {
+      next['1B'] = prev['1B'];
+      next['2B'] = prev['2B'];
+      next['3B'] = prev['3B'];
+    } else {
+      next['1B'] = prev['1B'];
+      next['2B'] = prev['2B'];
+      next['3B'] = prev['3B'];
+    }
+
+    const runsCount = Math.max(scoringPlayerIds.length, explicitRbi || (isHR ? 1 : 0));
+
+    return {
+      nextRunners: next,
+      scoringPlayerIds,
+      runsScored: runsCount
+    };
+  }
+
+  // ----------------------------------------------------
+  // CONSOLA DE PARTIDO EN VIVO INTERACTIVA (ROSMIL LEAGUE 0.3)
   // ----------------------------------------------------
   function initLiveGame(gameId) {
     const g = getGame(gameId);
@@ -2030,14 +2270,24 @@
     let outsCount = 0;
     let awayIdx = 0;
     let homeIdx = 0;
+    let reconstructedRunners = { '1B': null, '2B': null, '3B': null };
+
+    // Si ya tiene corredores guardados, utilizarlos
+    if (g.runners && typeof g.runners === 'object') {
+      reconstructedRunners = { ...g.runners };
+    }
 
     (g.batLog || []).forEach(pa => {
       currentInning = Number(pa.inning) || 1;
       currentHalf = pa.half || 'away';
+      if (pa.runnersAfter) {
+        reconstructedRunners = { ...pa.runnersAfter };
+      }
       if (Number(pa.outs) > 0) {
         outsCount += Number(pa.outs);
         if (outsCount >= (g.outsPerInning || 3)) {
           outsCount = 0;
+          reconstructedRunners = { '1B': null, '2B': null, '3B': null };
           if (currentHalf === 'away') {
             currentHalf = 'home';
           } else {
@@ -2067,12 +2317,18 @@
       activePitcherAway: g.activePitcherAway || defaultPitcherAway,
       activePitcherHome: g.activePitcherHome || defaultPitcherHome,
       selectedPlayResult: 'Single',
-      selectedRbi: 0
+      selectedRbi: 0,
+      runners: reconstructedRunners,
+      undoStack: [],
+      redoStack: []
     };
+
+    localStorage.setItem('rosmil_active_game_id', g.id);
 
     closeModals();
     $('#liveGameModal').classList.add('open');
     renderLiveGameUI();
+    updateActiveGameBanner();
   }
 
   function renderLiveGameUI() {
@@ -2119,7 +2375,6 @@
     // Entrada y Luces de Outs
     $('#liveInningText').textContent = `ENTRADA ${liveGameState.inning} (${isAwayBatting ? 'ALTA' : 'BAJA'})`;
 
-    const maxOuts = g.outsPerInning || 3;
     $('#outDot1').classList.toggle('active', liveGameState.outs >= 1);
     $('#outDot2').classList.toggle('active', liveGameState.outs >= 2);
     $('#outDot3').classList.toggle('active', liveGameState.outs >= 3);
@@ -2154,27 +2409,61 @@
       b.classList.toggle('active', Number(b.dataset.rbi) === liveGameState.selectedRbi);
     });
 
-    // Contador y log de jugadas
+    // ACTUALIZAR MAPA 2D DEL ESTADIO CON FOTOS REALES (SECCIONES 1, 2, 3, 5, 8, 9)
+    renderStadiumDiamond('live', liveGameState.runners, pitcherId, batterId);
+
+    // Botones de Deshacer y Rehacer
+    if ($('#btnLiveUndo')) {
+      $('#btnLiveUndo').disabled = liveGameState.undoStack.length === 0;
+    }
+    if ($('#btnLiveRedo')) {
+      $('#btnLiveRedo').disabled = liveGameState.redoStack.length === 0;
+    }
+
+    // PLAY-BY-PLAY CON FOTOS REALES (SECCIONES 10, 11 Y 38)
     const log = g.batLog || [];
     $('#livePlayCount').textContent = log.length;
     $('#liveLogList').innerHTML = log.length
       ? log
           .slice()
           .reverse()
-          .slice(0, 6)
-          .map(
-            pa => `
-        <div class="live-log-row">
-          <span><b>Inn ${pa.inning} (${pa.half === 'away' ? 'VIS' : 'LOC'}):</b> ${esc(
-              playerName(pa.batter)
-            )} ➔ <span style="color:var(--yellow);font-weight:700">${esc(resultLabel(pa.result))}</span></span>
-          <span style="color:${pa.rbi > 0 ? '#4ade80' : 'var(--muted)'}">${pa.rbi > 0 ? `+${pa.rbi} RBI` : ''} ${
-              pa.outs > 0 ? '• 1 Out' : ''
-            }</span>
-        </div>`
-          )
+          .slice(0, 15)
+          .map(pa => {
+            const bp = db.players.find(x => x.id === pa.batter);
+            const avatarHTML = bp?.photo
+              ? `<img src="${bp.photo}" class="pbp-thumb-avatar" alt="${esc(bp.name)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" /><div class="pbp-thumb-fallback" style="display:none">${(bp?.name || 'J')[0]}</div>`
+              : `<div class="pbp-thumb-fallback">${(bp?.name || 'J')[0]}</div>`;
+            return `
+              <div class="live-log-row pbp-event-row" data-pbp-id="${pa.id}">
+                <div style="display:flex;align-items:center;gap:8px">
+                  ${avatarHTML}
+                  <div>
+                    <b>Inn ${pa.inning} (${pa.half === 'away' ? 'VIS' : 'LOC'}):</b> ${esc(
+                      playerName(pa.batter)
+                    )} <span class="action-tag ${pa.result.toLowerCase().replace(/\s+/g, '-')}">${esc(
+                      resultLabel(pa.result)
+                    )}</span>
+                  </div>
+                </div>
+                <span style="color:${pa.rbi > 0 ? '#4ade80' : 'var(--muted)'};font-size:12px">
+                  ${pa.rbi > 0 ? `+${pa.rbi} RBI` : ''} ${pa.outs > 0 ? '• 1 Out' : ''}
+                </span>
+              </div>`;
+          })
           .join('')
       : '<span class="muted" style="font-size:12px;padding:6px">Sin jugadas aún en este partido.</span>';
+
+    // Click en evento del play-by-play para inspeccionar jugada
+    $$('#liveLogList .pbp-event-row').forEach(row => {
+      row.onclick = () => {
+        const targetId = row.dataset.pbpId;
+        const targetPa = (g.batLog || []).find(x => x.id === targetId);
+        if (targetPa && targetPa.runnersAfter) {
+          renderStadiumDiamond('live', targetPa.runnersAfter, targetPa.pitcher, targetPa.batter);
+          triggerStadiumAnimation('live', targetPa.result, targetPa.rbi, targetPa.result === 'Home Run');
+        }
+      };
+    });
 
     $('#livePlayBox').style.display = 'block';
     $('#liveInningEndPanel').style.display = 'none';
@@ -2184,7 +2473,6 @@
   function handleSelectPlayResult(action) {
     liveGameState.selectedPlayResult = action;
 
-    // Regla de especificacion para RBI
     if (
       action === 'Strikeout Swinging' ||
       action === 'Strikeout Looking' ||
@@ -2228,11 +2516,38 @@
     }
 
     const result = liveGameState.selectedPlayResult || 'Single';
-    const rbi = Number(liveGameState.selectedRbi) || 0;
+    const explicitRbi = Number(liveGameState.selectedRbi) || 0;
     const isOut = result.includes('out') || result.includes('Strikeout');
     const isHR = result === 'Home Run';
     const outsInPlay = isOut ? 1 : 0;
-    const runsInPlay = rbi > 0 ? rbi : isHR ? 1 : 0;
+
+    // Calcular avance de corredores con el motor físico 2D
+    const { nextRunners, scoringPlayerIds, runsScored } = advanceRunners(
+      liveGameState.runners,
+      result,
+      batterId,
+      explicitRbi
+    );
+
+    const rbi = explicitRbi > 0 ? explicitRbi : (isHR ? 1 : scoringPlayerIds.length);
+    const prevRunners = { ...liveGameState.runners };
+
+    // GUARDAR INSTANTÁNEA EN UNDO STACK (SECCIÓN 16 Y 17)
+    liveGameState.undoStack.push({
+      inning: liveGameState.inning,
+      half: liveGameState.half,
+      outs: liveGameState.outs,
+      awayScore: liveGameState.awayScore,
+      homeScore: liveGameState.homeScore,
+      gameAwayScore: g.awayScore,
+      gameHomeScore: g.homeScore,
+      awayBattingIndex: liveGameState.awayBattingIndex,
+      homeBattingIndex: liveGameState.homeBattingIndex,
+      runners: { ...liveGameState.runners },
+      activePitcherAway: liveGameState.activePitcherAway,
+      activePitcherHome: liveGameState.activePitcherHome
+    });
+    liveGameState.redoStack = []; // Se limpia rehacer al ingresar nueva jugada
 
     const pa = {
       id: id(),
@@ -2243,48 +2558,63 @@
       result,
       outs: outsInPlay,
       rbi,
-      runs: isHR ? 1 : 0,
-      earnedRuns: runsInPlay,
+      runs: isHR || scoringPlayerIds.includes(batterId) ? 1 : 0,
+      earnedRuns: runsScored,
+      runnersBefore: prevRunners,
+      runnersAfter: { ...nextRunners },
+      scoringRunners: scoringPlayerIds,
       timestamp: Date.now()
     };
 
     g.batLog = Array.isArray(g.batLog) ? g.batLog : [];
     g.batLog.push(pa);
 
-    // Actualización automática de carreras en el marcador
-    if (runsInPlay > 0) {
+    // Actualizar carreras
+    if (runsScored > 0) {
       if (isAwayBatting) {
-        g.awayScore = (Number(g.awayScore) || 0) + runsInPlay;
+        g.awayScore = (Number(g.awayScore) || 0) + runsScored;
         liveGameState.awayScore = g.awayScore;
       } else {
-        g.homeScore = (Number(g.homeScore) || 0) + runsInPlay;
+        g.homeScore = (Number(g.homeScore) || 0) + runsScored;
         liveGameState.homeScore = g.homeScore;
       }
     }
 
-    // Actualización de outs
+    // Actualizar outs
     if (isOut) {
       liveGameState.outs += 1;
     }
 
-    // Continuidad del lineup: avanzar al siguiente bateador
+    // Actualizar corredores
+    liveGameState.runners = { ...nextRunners };
+    g.runners = { ...nextRunners };
+
+    // Continuidad de lineup
     if (isAwayBatting) {
       liveGameState.awayBattingIndex = (liveGameState.awayBattingIndex + 1) % (lineup.length || 1);
     } else {
       liveGameState.homeBattingIndex = (liveGameState.homeBattingIndex + 1) % (lineup.length || 1);
     }
 
-    // Reset para el siguiente turno
+    // Disparar animación 2D en el estadio
+    triggerStadiumAnimation('live', result, rbi, isHR);
+
+    // Reset selección
     liveGameState.selectedPlayResult = 'Single';
     liveGameState.selectedRbi = 0;
 
-    // Recalcular estadísticas oficiales
+    // Recalcular y auto-guardar inmediatamente
     recalcStats();
     save();
+    updateActiveGameBanner();
 
     // Comprobar fin de media entrada
     const maxOuts = g.outsPerInning || 3;
     if (liveGameState.outs >= maxOuts) {
+      liveGameState.runners = { '1B': null, '2B': null, '3B': null };
+      g.runners = { '1B': null, '2B': null, '3B': null };
+      renderLiveGameUI();
+
       $('#livePlayBox').style.display = 'none';
       $('#liveInningEndPanel').style.display = 'block';
       $('#liveInningEndTitle').textContent = `ENTRADA ${liveGameState.inning} (${
@@ -2296,11 +2626,119 @@
     }
   }
 
+  // DESHACER JUGADA (SECCIÓN 16, 17 Y 18)
+  function handleUndoLivePlay() {
+    if (!checkAdmin()) return;
+    if (!liveGameState.undoStack.length) {
+      alert('No hay jugadas anteriores para deshacer.');
+      return;
+    }
+    const g = liveGameState.game;
+    if (!g || !g.batLog.length) return;
+
+    const lastPA = g.batLog[g.batLog.length - 1];
+    const bName = playerName(lastPA.batter);
+    const actionLabel = resultLabel(lastPA.result);
+
+    if (!confirm(`¿Deshacer la jugada: "${bName} — ${actionLabel}"?`)) return;
+
+    const snap = liveGameState.undoStack.pop();
+
+    // Guardar en redoStack
+    liveGameState.redoStack.push({
+      pa: lastPA,
+      inning: liveGameState.inning,
+      half: liveGameState.half,
+      outs: liveGameState.outs,
+      awayScore: liveGameState.awayScore,
+      homeScore: liveGameState.homeScore,
+      gameAwayScore: g.awayScore,
+      gameHomeScore: g.homeScore,
+      awayBattingIndex: liveGameState.awayBattingIndex,
+      homeBattingIndex: liveGameState.homeBattingIndex,
+      runners: { ...liveGameState.runners },
+      activePitcherAway: liveGameState.activePitcherAway,
+      activePitcherHome: liveGameState.activePitcherHome
+    });
+
+    g.batLog.pop();
+
+    // Restaurar desde snapshot
+    liveGameState.inning = snap.inning;
+    liveGameState.half = snap.half;
+    liveGameState.outs = snap.outs;
+    liveGameState.awayScore = snap.awayScore;
+    liveGameState.homeScore = snap.homeScore;
+    g.awayScore = snap.gameAwayScore;
+    g.homeScore = snap.gameHomeScore;
+    liveGameState.awayBattingIndex = snap.awayBattingIndex;
+    liveGameState.homeBattingIndex = snap.homeBattingIndex;
+    liveGameState.runners = { ...snap.runners };
+    g.runners = { ...snap.runners };
+    liveGameState.activePitcherAway = snap.activePitcherAway;
+    liveGameState.activePitcherHome = snap.activePitcherHome;
+
+    recalcStats();
+    save();
+    renderLiveGameUI();
+  }
+
+  // REHACER JUGADA (SECCIÓN 19)
+  function handleRedoLivePlay() {
+    if (!checkAdmin()) return;
+    if (!liveGameState.redoStack.length) {
+      alert('No hay jugadas para rehacer.');
+      return;
+    }
+    const g = liveGameState.game;
+    if (!g) return;
+
+    const redoSnap = liveGameState.redoStack.pop();
+
+    liveGameState.undoStack.push({
+      inning: liveGameState.inning,
+      half: liveGameState.half,
+      outs: liveGameState.outs,
+      awayScore: liveGameState.awayScore,
+      homeScore: liveGameState.homeScore,
+      gameAwayScore: g.awayScore,
+      gameHomeScore: g.homeScore,
+      awayBattingIndex: liveGameState.awayBattingIndex,
+      homeBattingIndex: liveGameState.homeBattingIndex,
+      runners: { ...liveGameState.runners },
+      activePitcherAway: liveGameState.activePitcherAway,
+      activePitcherHome: liveGameState.activePitcherHome
+    });
+
+    g.batLog.push(redoSnap.pa);
+
+    liveGameState.inning = redoSnap.inning;
+    liveGameState.half = redoSnap.half;
+    liveGameState.outs = redoSnap.outs;
+    liveGameState.awayScore = redoSnap.awayScore;
+    liveGameState.homeScore = redoSnap.homeScore;
+    g.awayScore = redoSnap.gameAwayScore;
+    g.homeScore = redoSnap.gameHomeScore;
+    liveGameState.awayBattingIndex = redoSnap.awayBattingIndex;
+    liveGameState.homeBattingIndex = redoSnap.homeBattingIndex;
+    liveGameState.runners = { ...redoSnap.runners };
+    g.runners = { ...redoSnap.runners };
+    liveGameState.activePitcherAway = redoSnap.activePitcherAway;
+    liveGameState.activePitcherHome = redoSnap.activePitcherHome;
+
+    recalcStats();
+    save();
+    renderLiveGameUI();
+  }
+
   function advanceToNextInning() {
     const g = liveGameState.game;
     if (!g) return;
 
     liveGameState.outs = 0;
+    liveGameState.runners = { '1B': null, '2B': null, '3B': null };
+    g.runners = { '1B': null, '2B': null, '3B': null };
+
     $('#liveInningEndPanel').style.display = 'none';
     $('#livePlayBox').style.display = 'block';
 
@@ -2321,14 +2759,66 @@
     renderLiveGameUI();
   }
 
+  function calculateGameMVP(g) {
+    const pas = g.batLog || [];
+    if (!pas.length) return null;
+
+    const scores = {};
+    pas.forEach(pa => {
+      // Bateador
+      if (!scores[pa.batter]) scores[pa.batter] = { h: 0, hr: 0, rbi: 0, r: 0, k: 0, er: 0, pts: 0 };
+      if (HIT_RESULTS.has(pa.result)) scores[pa.batter].h++;
+      if (pa.result === 'Home Run') scores[pa.batter].hr++;
+      scores[pa.batter].rbi += Number(pa.rbi) || 0;
+      scores[pa.batter].r += Number(pa.runs) || 0;
+
+      // Pitcher
+      if (!scores[pa.pitcher]) scores[pa.pitcher] = { h: 0, hr: 0, rbi: 0, r: 0, k: 0, er: 0, pts: 0 };
+      if (pa.result.includes('Strikeout')) scores[pa.pitcher].k++;
+      scores[pa.pitcher].er += Number(pa.earnedRuns) || 0;
+    });
+
+    let bestPid = null;
+    let maxPts = -999;
+
+    Object.entries(scores).forEach(([pid, d]) => {
+      d.pts = d.h * 2 + d.hr * 5 + d.rbi * 2.5 + d.r * 1.5 + d.k * 1.5 - d.er * 2;
+      if (d.pts > maxPts) {
+        maxPts = d.pts;
+        bestPid = pid;
+      }
+    });
+
+    if (!bestPid) return null;
+    const p = db.players.find(x => x.id === bestPid);
+    const d = scores[bestPid];
+    const statLine = `${d.h} Hits • ${d.hr} HR • ${d.rbi} RBI • ${d.r} CA ${d.k > 0 ? `• ${d.k} Ponches` : ''}`;
+
+    return { player: p, score: maxPts, statLine };
+  }
+
   function finishLiveGame(forceClose = true) {
     const g = liveGameState.game;
     if (!g) return;
 
-    g.status = 'Finalizado';
+    g.status = 'FINAL';
+    liveGameState.active = false;
+    localStorage.removeItem('rosmil_active_game_id');
+
+    const mvpObj = calculateGameMVP(g);
+    if (mvpObj?.player) {
+      g.mvp = {
+        id: mvpObj.player.id,
+        name: mvpObj.player.name,
+        photo: mvpObj.player.photo || '',
+        line: mvpObj.statLine
+      };
+    }
+
     updateSeriesFromGames();
     recalcStats();
     save();
+    updateActiveGameBanner();
 
     const winnerId = g.homeScore > g.awayScore ? g.home : g.awayScore > g.homeScore ? g.away : null;
     const loserId = winnerId === g.home ? g.away : winnerId === g.away ? g.home : null;
@@ -2391,15 +2881,278 @@
     renderLiveGameUI();
   }
 
+  // BANNER DE PARTIDO EN VIVO ACTIVO
+  function updateActiveGameBanner() {
+    const banner = $('#activeLiveGameBanner');
+    if (!banner) return;
+    const activeGame = db.games.find(g => g.status === 'LIVE' || g.status === 'En curso');
+    if (activeGame) {
+      banner.style.display = 'block';
+      const aName = teamName(activeGame.away);
+      const hName = teamName(activeGame.home);
+      $('#activeLiveBannerMatchup').textContent = `${aName} (${activeGame.awayScore}) vs ${hName} (${activeGame.homeScore})`;
+      $('#activeLiveBannerMeta').textContent = `${seasonName(activeGame.season)} • ${activeGame.stadium || 'Estadio'}`;
+      $('#btnResumeActiveGame').onclick = () => initLiveGame(activeGame.id);
+    } else {
+      banner.style.display = 'none';
+    }
+  }
+
+  // ----------------------------------------------------
+  // REPLAY 2D Y RESUMEN INTELIGENTE (SECCIONES 12, 13, 14, 15, 28)
+  // ----------------------------------------------------
+  function openGameReplay(gid) {
+    const g = getGame(gid);
+    if (!g) return;
+
+    closeModals();
+    $('#gameReplayModal').classList.add('open');
+
+    replayState = {
+      game: g,
+      events: (g.batLog || []).slice(),
+      currentIndex: 0,
+      isPlaying: false,
+      intervalId: null,
+      speed: 1
+    };
+
+    renderReplayHeader(g);
+    renderReplayLinescore(g);
+    renderReplayHighlights(g);
+    renderReplayMVP(g);
+    renderReplayTimeline();
+    setReplayEventIndex(0);
+  }
+
+  function renderReplayHeader(g) {
+    const aName = teamName(g.away);
+    const hName = teamName(g.home);
+    $('#replayGameTitle').textContent = `${aName} ${g.awayScore} — ${g.homeScore} ${hName}`;
+    $('#replayGameMeta').textContent = `${seasonName(g.season)} • ${g.date || ''} ${g.time || ''} • ${
+      g.stadium || 'Estadio Oficial'
+    }`;
+  }
+
+  function renderReplayLinescore(g) {
+    const maxInn = Math.max(7, ...(g.batLog || []).map(x => Number(x.inning) || 1));
+    const awayInnRuns = Array(maxInn).fill(0);
+    const homeInnRuns = Array(maxInn).fill(0);
+
+    let awayHits = 0;
+    let homeHits = 0;
+
+    (g.batLog || []).forEach(pa => {
+      const innIdx = Math.max(0, (Number(pa.inning) || 1) - 1);
+      const r = Number(pa.earnedRuns) || (pa.result === 'Home Run' ? 1 : 0);
+      if (pa.half === 'away') {
+        awayInnRuns[innIdx] += r;
+        if (HIT_RESULTS.has(pa.result)) awayHits++;
+      } else {
+        homeInnRuns[innIdx] += r;
+        if (HIT_RESULTS.has(pa.result)) homeHits++;
+      }
+    });
+
+    let headerHTML = '<th>Equipo</th>';
+    for (let i = 1; i <= maxInn; i++) headerHTML += `<th>${i}</th>`;
+    headerHTML += '<th>C</th><th>H</th><th>E</th>';
+
+    const aName = teamName(g.away);
+    const hName = teamName(g.home);
+
+    let awayRowHTML = `<td><b>${esc(aName)}</b></td>`;
+    awayInnRuns.forEach(r => (awayRowHTML += `<td>${r}</td>`));
+    awayRowHTML += `<td><b>${g.awayScore}</b></td><td>${awayHits}</td><td>0</td>`;
+
+    let homeRowHTML = `<td><b>${esc(hName)}</b></td>`;
+    homeInnRuns.forEach(r => (homeRowHTML += `<td>${r}</td>`));
+    homeRowHTML += `<td><b>${g.homeScore}</b></td><td>${homeHits}</td><td>0</td>`;
+
+    $('#replayLinescoreTable').innerHTML = `
+      <thead><tr>${headerHTML}</tr></thead>
+      <tbody>
+        <tr>${awayRowHTML}</tr>
+        <tr>${homeRowHTML}</tr>
+      </tbody>
+    `;
+  }
+
+  function renderReplayHighlights(g) {
+    const listEl = $('#replayHighlightsList');
+    const pas = g.batLog || [];
+    const highlights = [];
+
+    pas.forEach((pa, idx) => {
+      const bName = playerName(pa.batter);
+      const bp = db.players.find(x => x.id === pa.batter);
+      if (pa.result === 'Home Run') {
+        highlights.push({
+          idx,
+          player: bp,
+          icon: '🚀',
+          text: `HOME RUN de ${bName} (+${pa.rbi || 1} RBI)`,
+          inn: `Inn ${pa.inning}`
+        });
+      } else if (pa.result === 'Triple') {
+        highlights.push({
+          idx,
+          player: bp,
+          icon: '⚡',
+          text: `Triple por la raya de ${bName}`,
+          inn: `Inn ${pa.inning}`
+        });
+      } else if (pa.result === 'Double') {
+        highlights.push({
+          idx,
+          player: bp,
+          icon: '🔥',
+          text: `Doble de ${bName}`,
+          inn: `Inn ${pa.inning}`
+        });
+      } else if (Number(pa.rbi) >= 2) {
+        highlights.push({
+          idx,
+          player: bp,
+          icon: '💥',
+          text: `Batazo oportuno de ${bName} con ${pa.rbi} impulsadas`,
+          inn: `Inn ${pa.inning}`
+        });
+      } else if (pa.result.includes('Strikeout')) {
+        const pp = db.players.find(x => x.id === pa.pitcher);
+        highlights.push({
+          idx,
+          player: pp,
+          icon: '❌',
+          text: `Ponche propinado por ${playerName(pa.pitcher)}`,
+          inn: `Inn ${pa.inning}`
+        });
+      }
+    });
+
+    listEl.innerHTML = highlights.length
+      ? highlights
+          .slice(0, 10)
+          .map(h => {
+            const avatar = h.player?.photo
+              ? `<img src="${h.player.photo}" class="pbp-thumb-avatar" alt="">`
+              : `<div class="pbp-thumb-fallback">${(h.player?.name || 'J')[0]}</div>`;
+            return `
+              <div class="highlight-row" data-replay-jump="${h.idx}">
+                <div style="display:flex;align-items:center;gap:8px">
+                  ${avatar}
+                  <div>
+                    <b>${h.icon} ${esc(h.text)}</b>
+                    <small class="muted" style="display:block">${h.inn}</small>
+                  </div>
+                </div>
+                <button class="btn btn-sm yellow">Ver 2D</button>
+              </div>`;
+          })
+          .join('')
+      : '<div class="empty">Sin jugadas destacadas adicionales.</div>';
+
+    $$('#replayHighlightsList [data-replay-jump]').forEach(btn => {
+      btn.onclick = () => setReplayEventIndex(Number(btn.dataset.replayJump));
+    });
+  }
+
+  function renderReplayMVP(g) {
+    const area = $('#replayMvpArea');
+    const mvpObj = calculateGameMVP(g);
+    if (!mvpObj || !mvpObj.player) {
+      area.innerHTML = '<div class="muted">No hay datos suficientes para calcular MVP.</div>';
+      return;
+    }
+    const p = mvpObj.player;
+    const avatar = p.photo
+      ? `<img src="${p.photo}" class="mvp-photo" alt="${esc(p.name)}" />`
+      : `<div class="mvp-fallback-avatar">${(p.name || 'J')[0]}</div>`;
+
+    area.innerHTML = `
+      <div class="replay-mvp-card">
+        ${avatar}
+        <div>
+          <span class="mvp-badge">🏆 MVP DEL PARTIDO</span>
+          <h3 style="margin:4px 0;color:var(--yellow);font-size:18px">${esc(p.name)}</h3>
+          <div class="muted" style="font-size:12px">${esc(teamName(p.team))} • #${esc(p.number || '—')}</div>
+          <div style="margin-top:6px;font-weight:700;color:#fff;font-size:13px">${esc(mvpObj.statLine)}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderReplayTimeline() {
+    const track = $('#replayTimelineTrack');
+    const events = replayState.events;
+
+    track.innerHTML = events.length
+      ? events
+          .map((pa, idx) => {
+            const bp = db.players.find(x => x.id === pa.batter);
+            const avatar = bp?.photo
+              ? `<img src="${bp.photo}" class="pbp-thumb-avatar" style="width:20px;height:20px" alt="">`
+              : `<span style="font-size:10px">⚾</span>`;
+            return `
+              <div class="timeline-node-chip ${idx === 0 ? 'active' : ''}" data-replay-idx="${idx}">
+                <span>#${idx + 1}</span>
+                ${avatar}
+                <b>Inn ${pa.inning}</b>
+                <span>${esc(resultLabel(pa.result))}</span>
+              </div>`;
+          })
+          .join('')
+      : '<div class="empty">Sin jugadas en este partido.</div>';
+
+    $$('#replayTimelineTrack .timeline-node-chip').forEach(chip => {
+      chip.onclick = () => setReplayEventIndex(Number(chip.dataset.replayIdx));
+    });
+  }
+
+  function setReplayEventIndex(idx) {
+    const events = replayState.events;
+    if (!events.length) {
+      renderStadiumDiamond('replay', { '1B': null, '2B': null, '3B': null });
+      return;
+    }
+
+    const clampedIdx = Math.max(0, Math.min(events.length - 1, idx));
+    replayState.currentIndex = clampedIdx;
+
+    $$('#replayTimelineTrack .timeline-node-chip').forEach((c, i) => {
+      c.classList.toggle('active', i === clampedIdx);
+    });
+
+    const pa = events[clampedIdx];
+    const bName = playerName(pa.batter);
+    const pName = playerName(pa.pitcher);
+
+    $('#replayPlayInfo').innerHTML = `
+      <b>JUGADA #${clampedIdx + 1}:</b> Entrada ${pa.inning} (${pa.half === 'away' ? 'Alta' : 'Baja'}) • 
+      <b>${esc(bName)}</b> al bate vs <b>${esc(pName)}</b> ➔ 
+      <span style="color:var(--yellow);font-weight:800">${esc(resultLabel(pa.result))}</span>
+      ${pa.rbi > 0 ? ` <span style="color:#4ade80">(+${pa.rbi} RBI)</span>` : ''}
+    `;
+
+    renderStadiumDiamond('replay', pa.runnersBefore || { '1B': null, '2B': null, '3B': null }, pa.pitcher, pa.batter);
+    triggerStadiumAnimation('replay', pa.result, pa.rbi, pa.result === 'Home Run');
+
+    setTimeout(() => {
+      renderStadiumDiamond('replay', pa.runnersAfter || { '1B': null, '2B': null, '3B': null }, pa.pitcher, null);
+    }, 450);
+  }
+
   function gameStatus(g) {
-    return (g.batLog || []).length ? 'BAT LOG activo' : 'BAT LOG pendiente';
+    if (g.status === 'LIVE' || g.status === 'En curso') return '🔴 EN VIVO';
+    return (g.batLog || []).length ? 'FINALIZADO' : 'PROGRAMADO';
   }
 
   function gameHTML(g) {
     const sr = g.series ? getSeries(g.series) : null;
     const paCount = (g.batLog || []).length;
+    const isLive = g.status === 'LIVE' || g.status === 'En curso';
     return `
-      <div class="gamecard">
+      <div class="gamecard ${isLive ? 'gamecard-live' : ''}">
         <div class="head">
           <span class="muted">${esc(g.date)} ${esc(g.time)} • ${esc(seasonName(g.season))}</span>
           <span class="pill">${sr ? `Serie: ${esc(teamName(sr.teamA))} vs ${esc(teamName(sr.teamB))}` : 'Juego de liga'}</span>
@@ -2413,11 +3166,12 @@
           Juego ${esc(g.gameNumber || '—')} ${g.stadium ? '• ' + esc(g.stadium) : ''}
         </div>
         <div class="head" style="margin-top:12px">
-          <span class="tag">${gameStatus(g)}</span>
-          <span class="muted">${paCount} apariciones registradas</span>
+          <span class="tag ${isLive ? 'tag-live' : ''}">${gameStatus(g)}</span>
+          <span class="muted">${paCount} jugadas registradas</span>
         </div>
         <div class="actions" style="margin-top:11px">
           <button class="btn yellow" data-live-game="${g.id}">⚡ Consola en Vivo</button>
+          <button class="btn blue" data-replay-game="${g.id}">🎬 Ver Replay 2D</button>
           <button class="btn" data-score-game="${g.id}">Libro BAT LOG</button>
           <button class="btn admin-only" data-edit-game="${g.id}">Editar</button>
           <button class="btn danger admin-only" data-del-game="${g.id}">Eliminar</button>
@@ -2432,6 +3186,7 @@
       : empty('No hay juegos', 'Pulsa "+ Crear Partido (Paso a Paso)" para iniciar un juego.');
 
     $$('[data-live-game]').forEach(b => (b.onclick = () => initLiveGame(b.dataset.liveGame)));
+    $$('[data-replay-game]').forEach(b => (b.onclick = () => openGameReplay(b.dataset.replayGame)));
     $$('[data-score-game]').forEach(b => (b.onclick = () => openScorebook(b.dataset.scoreGame)));
     $$('[data-del-game]').forEach(
       b =>
@@ -3132,6 +3887,7 @@
     renderHistory();
     renderHomeGames();
     renderAdminPanel();
+    updateActiveGameBanner();
 
     if (activeTeamId && $('#teamProfile').classList.contains('active')) {
       renderTeamProfile();
@@ -3877,6 +4633,7 @@
         if (confirm('¿Deseas salir del Modo Administrador y volver a Modo Espectador?')) {
           isAdmin = false;
           sessionStorage.removeItem('rosmil_is_admin');
+          localStorage.removeItem('rosmil_is_admin');
           updateRoleUI();
           renderAll();
         }
@@ -3893,6 +4650,7 @@
       if (pin === expected) {
         isAdmin = true;
         sessionStorage.setItem('rosmil_is_admin', 'true');
+        localStorage.setItem('rosmil_is_admin', 'true');
         $('#adminLoginError').style.display = 'none';
         closeModals();
         updateRoleUI();
@@ -4362,6 +5120,97 @@
       $('#btnConfirmLivePlay').addEventListener('click', confirmLivePlay);
     }
 
+    // BOTONES DESHACER Y REHACER (SECCIÓN 16 Y 19)
+    if ($('#btnLiveUndo')) {
+      $('#btnLiveUndo').addEventListener('click', handleUndoLivePlay);
+    }
+    if ($('#btnLiveRedo')) {
+      $('#btnLiveRedo').addEventListener('click', handleRedoLivePlay);
+    }
+
+    // REPLAY 2D DESDE LA CONSOLA EN VIVO
+    if ($('#btnLiveOpenReplay')) {
+      $('#btnLiveOpenReplay').addEventListener('click', () => {
+        if (liveGameState.gameId) openGameReplay(liveGameState.gameId);
+      });
+    }
+
+    // CONTROLES DE REPLAY 2D
+    if ($('#btnCloseReplayModal')) {
+      $('#btnCloseReplayModal').addEventListener('click', () => {
+        if (replayState.intervalId) {
+          clearInterval(replayState.intervalId);
+          replayState.isPlaying = false;
+        }
+        $('#gameReplayModal').classList.remove('open');
+      });
+    }
+
+    if ($('#btnReplayPrev')) {
+      $('#btnReplayPrev').addEventListener('click', () => {
+        setReplayEventIndex(replayState.currentIndex - 1);
+      });
+    }
+
+    if ($('#btnReplayNext')) {
+      $('#btnReplayNext').addEventListener('click', () => {
+        setReplayEventIndex(replayState.currentIndex + 1);
+      });
+    }
+
+    if ($('#btnReplayPlayToggle')) {
+      $('#btnReplayPlayToggle').addEventListener('click', () => {
+        const btn = $('#btnReplayPlayToggle');
+        if (replayState.isPlaying) {
+          clearInterval(replayState.intervalId);
+          replayState.isPlaying = false;
+          btn.textContent = '▶ Reproducir';
+        } else {
+          replayState.isPlaying = true;
+          btn.textContent = '⏸ Pausar';
+          if (replayState.currentIndex >= replayState.events.length - 1) {
+            setReplayEventIndex(0);
+          }
+          replayState.intervalId = setInterval(() => {
+            if (replayState.currentIndex < replayState.events.length - 1) {
+              setReplayEventIndex(replayState.currentIndex + 1);
+            } else {
+              clearInterval(replayState.intervalId);
+              replayState.isPlaying = false;
+              btn.textContent = '▶ Reproducir';
+            }
+          }, 2000 / (replayState.speed || 1));
+        }
+      });
+    }
+
+    $$('.btn-speed-opt').forEach(btn => {
+      btn.addEventListener('click', () => {
+        $$('.btn-speed-opt').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        replayState.speed = Number(btn.dataset.speed) || 1;
+        if (replayState.isPlaying) {
+          clearInterval(replayState.intervalId);
+          replayState.intervalId = setInterval(() => {
+            if (replayState.currentIndex < replayState.events.length - 1) {
+              setReplayEventIndex(replayState.currentIndex + 1);
+            } else {
+              clearInterval(replayState.intervalId);
+              replayState.isPlaying = false;
+              $('#btnReplayPlayToggle').textContent = '▶ Reproducir';
+            }
+          }, 2000 / replayState.speed);
+        }
+      });
+    });
+
+    if ($('#btnResumeActiveGame')) {
+      $('#btnResumeActiveGame').addEventListener('click', () => {
+        const ag = db.games.find(g => g.status === 'LIVE' || g.status === 'En curso');
+        if (ag) initLiveGame(ag.id);
+      });
+    }
+
     if ($('#btnLiveNextInning')) {
       $('#btnLiveNextInning').addEventListener('click', advanceToNextInning);
     }
@@ -4420,6 +5269,18 @@
             if (doc.exists) {
               const cloudData = doc.data();
               if (cloudData && typeof cloudData === 'object') {
+                const cloudUpdated = Number(cloudData.updatedAt) || 0;
+                const localUpdated = Number(db.updatedAt) || 0;
+                const cloudGames = Array.isArray(cloudData.games) ? cloudData.games.length : 0;
+                const localGames = Array.isArray(db.games) ? db.games.length : 0;
+
+                // Proteger datos locales más recientes de ser sobrescritos por la nube
+                if (cloudUpdated < localUpdated && localGames >= cloudGames) {
+                  firestoreDb.collection('leagues').doc('main').set(db);
+                  updateStorageStatus('🟢 En la nube (Firebase)');
+                  return;
+                }
+
                 db = {
                   teams: Array.isArray(cloudData.teams) ? cloudData.teams : [],
                   players: Array.isArray(cloudData.players) ? cloudData.players : [],
@@ -4427,6 +5288,7 @@
                   seasons: Array.isArray(cloudData.seasons) ? cloudData.seasons : [],
                   series: Array.isArray(cloudData.series) ? cloudData.series : [],
                   events: Array.isArray(cloudData.events) ? cloudData.events : [],
+                  updatedAt: cloudUpdated,
                   settings: cloudData.settings || db.settings || { adminPin: 'admin123', leagueName: 'ROSMIL LEAGUE' }
                 };
                 db.games.forEach(g => {
@@ -4440,6 +5302,7 @@
                 } catch (e) {}
                 recalcStats();
                 renderAll();
+                updateActiveGameBanner();
                 updateStorageStatus('🟢 En la nube (Firebase)');
               }
             } else {
@@ -4463,5 +5326,6 @@
   initEvents();
   recalcStats();
   renderAll();
+  updateActiveGameBanner();
   initFirebaseSync();
 })();
