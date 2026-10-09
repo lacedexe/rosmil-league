@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <!-- Stylesheet -->
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/style.css?v=rosmil_0.3.6">
 </head>
 <body>
   <div class="app">
@@ -1143,8 +1143,8 @@
   </div>
 
   <!-- Modal: Consola de Partido en Vivo (ROSMIL LEAGUE 0.3 - Ultra Rápida con Estadio 2D) -->
-  <div class="modal" id="liveGameModal">
-    <div class="modalbox large live-game-console">
+  <div class="modal live-fullscreen-modal" id="liveGameModal">
+    <div class="live-game-console">
       <!-- Marcador Principal Superior con R - H - E (Requisito 10) -->
       <div class="live-scoreboard">
         <div class="live-team away">
@@ -1195,7 +1195,10 @@
             </table>
           </div>
 
-          <button type="button" class="btn btn-sm btn-subtle" id="btnLiveChangePitcher">🔄 Cambiar Pitcher</button>
+          <div style="display:flex;gap:6px;align-items:center;margin-top:2px;">
+            <button type="button" class="btn btn-sm btn-subtle" id="btnLiveChangePitcher">🔄 Pitcher</button>
+            <button type="button" class="btn btn-sm btn-subtle close" id="btnLiveCloseTopBtn" title="Salir de la pantalla completa del partido">✕ Salir</button>
+          </div>
         </div>
 
         <div class="live-team home">
@@ -1480,8 +1483,8 @@
   </div>
 
   <!-- Modal: 2D Game Replay & Resumen Oficial (ROSMIL LEAGUE 0.3) -->
-  <div class="modal" id="gameReplayModal">
-    <div class="modalbox large replay-modal-box">
+  <div class="modal live-fullscreen-modal" id="gameReplayModal">
+    <div class="replay-modal-box">
       <!-- Encabezado del Replay -->
       <div class="replay-header">
         <div class="replay-header-info">
@@ -1656,6 +1659,6 @@
   <!-- Firebase Configuration -->
   <script src="js/firebase-config.js"></script>
   <!-- Application Logic -->
-  <script src="js/app.js?v=rosmil_0.3.3"></script>
+  <script src="js/app.js?v=rosmil_0.3.6"></script>
 </body>
 </html>
