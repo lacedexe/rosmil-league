@@ -780,14 +780,15 @@
   // RÉCORD Y ESTADÍSTICAS DE EQUIPO (REGLAS N° 3 Y N° 4)
   // ----------------------------------------------------
   function calculateTeamRecord(tid) {
-    const games = db.games.filter(g => g.home === tid || g.away === tid);
+    const finishedGames = db.games.filter(
+      g => (g.home === tid || g.away === tid) && (g.status === 'FINAL' || g.status === 'Finalizado')
+    );
     let w = 0,
       l = 0,
-      t = 0,
       rs = 0,
       ra = 0;
 
-    games.forEach(g => {
+    finishedGames.forEach(g => {
       const isHome = g.home === tid;
       const own = Number(isHome ? g.homeScore : g.awayScore) || 0;
       const opp = Number(isHome ? g.awayScore : g.homeScore) || 0;
@@ -795,20 +796,20 @@
       ra += opp;
       if (own > opp) w++;
       else if (own < opp) l++;
-      else t++;
     });
 
-    const gp = games.length;
+    const gp = finishedGames.length;
     const pct = w + l ? w / (w + l) : 0;
     const diff = rs - ra;
-    return { gp, w, l, t, pct, rs, ra, diff, games };
+    return { gp, w, l, pct, rs, ra, diff, games: finishedGames };
   }
 
   function calculateHeadToHead(teamA, teamB) {
     const games = db.games.filter(
       g =>
-        (g.home === teamA && g.away === teamB) ||
-        (g.home === teamB && g.away === teamA)
+        ((g.home === teamA && g.away === teamB) ||
+         (g.home === teamB && g.away === teamA)) &&
+        (g.status === 'FINAL' || g.status === 'Finalizado')
     );
 
     let winsA = 0,
@@ -1127,8 +1128,8 @@
                       const oppId = isHome ? g.away : g.home;
                       const own = Number(isHome ? g.homeScore : g.awayScore) || 0;
                       const opp = Number(isHome ? g.awayScore : g.homeScore) || 0;
+                      const isFinished = g.status === 'FINAL' || g.status === 'Finalizado';
                       const win = own > opp;
-                      const tie = own === opp;
                       return `
                       <tr>
                         <td>${esc(g.date)}</td>
@@ -1137,9 +1138,13 @@
                         <td>${isHome ? 'Local' : 'Visitante'}</td>
                         <td>
                           <span class="tag" style="background:${
-                            win ? 'rgba(34,197,94,0.2)' : tie ? 'rgba(250,204,21,0.2)' : 'rgba(239,68,68,0.2)'
-                          };color:${win ? '#4ade80' : tie ? 'var(--yellow)' : '#f87171'}">
-                            ${win ? 'VICTORIA' : tie ? 'EMPATE' : 'DERROTA'}
+                            !isFinished
+                              ? 'rgba(234,179,8,0.2)'
+                              : win
+                              ? 'rgba(34,197,94,0.2)'
+                              : 'rgba(239,68,68,0.2)'
+                          };color:${!isFinished ? 'var(--yellow)' : win ? '#4ade80' : '#f87171'}">
+                            ${!isFinished ? 'EN CURSO' : win ? 'VICTORIA' : 'DERROTA'}
                           </span>
                         </td>
                       </tr>`;
@@ -2763,9 +2768,7 @@
             currentHalf = 'home';
           } else {
             currentHalf = 'away';
-            if (currentInning < maxInnings) {
-              currentInning++;
-            }
+            currentInning++;
           }
         }
       }
@@ -2775,10 +2778,6 @@
         homeIdx = (homeIdx + 1) % (homeLineup.length || 1);
       }
     });
-
-    if (currentInning > maxInnings) {
-      currentInning = maxInnings;
-    }
 
     const isAlreadyFinal = g.status === 'FINAL' || g.status === 'Finalizado';
     liveGameState = {
@@ -2822,23 +2821,23 @@
 
     // Si el juego ya está finalizado, mostrar panel final y detener interacción
     if (g.status === 'FINAL' || g.status === 'Finalizado' || !liveGameState.active) {
+      const actualInnings = Math.max(maxInnings, ...(g.batLog || []).map(x => Number(x.inning) || 1));
+      const extraTxt = actualInnings > maxInnings ? ` (${actualInnings} ENTRADAS - EXTRA INNINGS)` : ` (${actualInnings} ENTRADAS)`;
       $('#liveAwayName').textContent = teamName(g.away);
       $('#liveHomeName').textContent = teamName(g.home);
       $('#liveAwayScore').textContent = g.awayScore;
       $('#liveHomeScore').textContent = g.homeScore;
       if ($('#liveInningText')) {
-        $('#liveInningText').textContent = `FINAL (${maxInnings} ENTRADAS)`;
+        $('#liveInningText').textContent = `FINAL${extraTxt}`;
       }
       $('#livePlayBox').style.display = 'none';
       $('#liveInningEndPanel').style.display = 'none';
       $('#liveGameOverPanel').style.display = 'block';
 
-      const winnerId = g.homeScore > g.awayScore ? g.home : g.awayScore > g.homeScore ? g.away : null;
-      const loserId = winnerId === g.home ? g.away : winnerId === g.away ? g.home : null;
+      const winnerId = g.homeScore > g.awayScore ? g.home : g.away;
+      const loserId = winnerId === g.home ? g.away : g.home;
       $('#liveGameOverScore').textContent = `${teamName(g.away)} ${g.awayScore} — ${g.homeScore} ${teamName(g.home)}`;
-      $('#liveWinnerLoserBadge').innerHTML = winnerId
-        ? `<b>GANADOR:</b> <span style="color:var(--yellow)">${esc(teamName(winnerId))}</span> • <b>PERDEDOR:</b> ${esc(teamName(loserId))}`
-        : '<b>RESULTADO:</b> EMPATE';
+      $('#liveWinnerLoserBadge').innerHTML = `<b>GANADOR:</b> <span style="color:var(--yellow)">${esc(teamName(winnerId))}</span> • <b>PERDEDOR:</b> ${esc(teamName(loserId))}`;
       return;
     }
 
@@ -2896,7 +2895,10 @@
     $('#liveHomeTag').textContent = !isAwayBatting ? 'AL BATE' : 'DEFENSIVA';
 
     // Entrada y Luces de Outs Dinámicas según Configuración del Juego
-    $('#liveInningText').textContent = `ENTRADA ${liveGameState.inning} de ${maxInnings} (${isAwayBatting ? 'ALTA' : 'BAJA'})`;
+    const isExtra = liveGameState.inning > maxInnings;
+    $('#liveInningText').textContent = isExtra
+      ? `ENTRADA ${liveGameState.inning} • EXTRA INNING (${isAwayBatting ? 'ALTA ▲' : 'BAJA ▼'})`
+      : `ENTRADA ${liveGameState.inning} de ${maxInnings} (${isAwayBatting ? 'ALTA ▲' : 'BAJA ▼'})`;
 
     if ($('#liveOutsLabel')) {
       $('#liveOutsLabel').textContent = `OUTS (${liveGameState.outs}/${maxOuts}):`;
@@ -3194,19 +3196,44 @@
 
     // CAMBIO AUTOMÁTICO DE INNING AL COMPLETAR EL ÚLTIMO OUT SEGÚN CONFIGURACIÓN (Requisitos 1 y 2)
     if (liveGameState.outs >= maxOuts) {
-      // 1. Si terminó la ALTA de la última entrada y el local ya está en ventaja -> Finaliza inmediatamente
-      if (isFinalInning && !isBottom && liveGameState.homeScore > liveGameState.awayScore) {
+      // 1. Si terminó la ALTA de la última entrada reglamentaria (inning === maxInnings) y el local ya está en ventaja -> Finaliza inmediatamente (el local no necesita batear)
+      if (liveGameState.inning === maxInnings && !isBottom && liveGameState.homeScore > liveGameState.awayScore) {
         finishLiveGame(false);
         return;
       }
 
-      // 2. Si terminó la BAJA de la última entrada -> El partido se ha completado en su totalidad
+      // 2. Si terminó la BAJA de la última entrada reglamentaria o de un EXTRA INNING:
       if (isFinalInning && isBottom) {
-        finishLiveGame(false);
+        // ¿Hay ganador?
+        if (liveGameState.homeScore !== liveGameState.awayScore) {
+          finishLiveGame(false);
+          return;
+        }
+
+        // ¡ESTÁN EMPATADOS! NO TERMINA EL PARTIDO. AVANZA A EXTRA INNING AUTOMÁTICAMENTE
+        liveGameState.outs = 0;
+        liveGameState.runners = { '1B': null, '2B': null, '3B': null };
+        g.runners = { '1B': null, '2B': null, '3B': null };
+        liveGameState.half = 'away';
+        liveGameState.inning += 1;
+
+        if ($('#liveInningEndPanel')) {
+          const nextInn = liveGameState.inning;
+          $('#liveInningEndTitle').innerHTML = `🔔 FIN DEL INNING ${nextInn - 1} — <span style="color:var(--yellow)">¡PARTIDO EMPATADO!</span>`;
+          $('#liveInningEndScore').textContent = `${teamName(g.away)} ${g.awayScore} — ${g.homeScore} ${teamName(g.home)}`;
+          if ($('#btnLiveNextInning')) {
+            $('#btnLiveNextInning').textContent = `⚡ INICIAR INNING ${nextInn} (EXTRA INNING) ➔`;
+          }
+          $('#livePlayBox').style.display = 'none';
+          $('#liveInningEndPanel').style.display = 'block';
+        }
+
+        save();
+        renderLiveGameUI();
         return;
       }
 
-      // 3. Transición automática e inmediata sin que el usuario salga y vuelva a entrar
+      // 3. Transición automática e inmediata entre mitades de entrada
       liveGameState.outs = 0;
       liveGameState.runners = { '1B': null, '2B': null, '3B': null };
       g.runners = { '1B': null, '2B': null, '3B': null };
@@ -3351,19 +3378,32 @@
     g.runners = { '1B': null, '2B': null, '3B': null };
 
     $('#liveInningEndPanel').style.display = 'none';
+    $('#livePlayBox').style.display = 'block';
 
     const maxInnings = Math.max(1, Number(g.innings) || 7);
 
+    // Si ya estamos posicionados en la alta del extra inning (inning > maxInnings y half === 'away'), simplemente renderizar y continuar
+    if (liveGameState.inning > maxInnings && liveGameState.half === 'away') {
+      save();
+      renderLiveGameUI();
+      return;
+    }
+
     if (liveGameState.half === 'away') {
-      if (liveGameState.inning >= maxInnings && liveGameState.homeScore > liveGameState.awayScore) {
+      // Si terminó la alta del último inning reglamentario y el local ya está en ventaja
+      if (liveGameState.inning === maxInnings && liveGameState.homeScore > liveGameState.awayScore) {
         finishLiveGame(false);
         return;
       }
       liveGameState.half = 'home';
     } else {
+      // Si terminó la baja del último inning reglamentario o de un extra inning:
       if (liveGameState.inning >= maxInnings) {
-        finishLiveGame(false);
-        return;
+        if (liveGameState.homeScore !== liveGameState.awayScore) {
+          finishLiveGame(false);
+          return;
+        }
+        // Si continúan empatados, avanza al siguiente extra inning
       }
       liveGameState.half = 'away';
       liveGameState.inning += 1;
@@ -3436,22 +3476,20 @@
     renderAll();
 
     const maxInnings = Math.max(1, Number(g.innings) || 7);
+    const actualInnings = Math.max(maxInnings, ...(g.batLog || []).map(x => Number(x.inning) || 1));
+    const extraTxt = actualInnings > maxInnings ? ` (${actualInnings} ENTRADAS - EXTRA INNINGS)` : ` (${actualInnings} ENTRADAS)`;
     if ($('#liveInningText')) {
-      $('#liveInningText').textContent = `FINAL (${maxInnings} ENTRADAS)`;
+      $('#liveInningText').textContent = `FINAL${extraTxt}`;
     }
 
-    const winnerId = g.homeScore > g.awayScore ? g.home : g.awayScore > g.homeScore ? g.away : null;
-    const loserId = winnerId === g.home ? g.away : winnerId === g.away ? g.home : null;
+    const winnerId = g.homeScore > g.awayScore ? g.home : g.away;
+    const loserId = winnerId === g.home ? g.away : g.home;
 
     $('#livePlayBox').style.display = 'none';
     $('#liveInningEndPanel').style.display = 'none';
     $('#liveGameOverPanel').style.display = 'block';
     $('#liveGameOverScore').textContent = `${teamName(g.away)} ${g.awayScore} — ${g.homeScore} ${teamName(g.home)}`;
-    $('#liveWinnerLoserBadge').innerHTML = winnerId
-      ? `<b>GANADOR:</b> <span style="color:var(--yellow)">${esc(teamName(winnerId))}</span> • <b>PERDEDOR:</b> ${esc(
-          teamName(loserId)
-        )}`
-      : '<b>RESULTADO:</b> EMPATE';
+    $('#liveWinnerLoserBadge').innerHTML = `<b>GANADOR:</b> <span style="color:var(--yellow)">${esc(teamName(winnerId))}</span> • <b>PERDEDOR:</b> ${esc(teamName(loserId))}`;
 
     if (forceClose) {
       setTimeout(() => {
@@ -3985,12 +4023,14 @@
     $('#replayHomeRoleTag').textContent = isAwayBatting ? 'DEFENSA' : 'BATEO';
 
     // Inning y Outs
-    $('#replayInningBadge').textContent = `INNING ${pa.inning} (${isAwayBatting ? 'ALTA ▲' : 'BAJA ▼'})`;
+    const regInnings = Math.max(1, Number(g.innings) || 7);
+    const isExtra = Number(pa.inning) > regInnings;
+    $('#replayInningBadge').textContent = `INNING ${pa.inning}${isExtra ? ' • EXTRA INNING' : ''} (${isAwayBatting ? 'ALTA ▲' : 'BAJA ▼'})`;
     updateOutDots('replayOutDots', accOutsInHalf, maxOuts);
 
     // Barra de progreso y slider
     $('#replayProgressText').textContent = `Jugada ${clampedIdx + 1} de ${events.length}`;
-    $('#replayProgressInning').textContent = `Inning ${pa.inning}${isAwayBatting ? '▲' : '▼'} • ${accOutsInHalf} Out${accOutsInHalf !== 1 ? 's' : ''}`;
+    $('#replayProgressInning').textContent = `Inning ${pa.inning}${isExtra ? ' (Extra)' : ''}${isAwayBatting ? '▲' : '▼'} • ${accOutsInHalf} Out${accOutsInHalf !== 1 ? 's' : ''}`;
     const slider = $('#replayProgressSlider');
     if (slider) {
       slider.value = Math.round((clampedIdx / (events.length - 1 || 1)) * 100);
@@ -4018,7 +4058,7 @@
     renderReplayMatchup(bp, pp, pa);
 
     // Titular Narrativo Inicial
-    $('#replayHeadlineTag').textContent = `#${clampedIdx + 1} • INN ${pa.inning}${isAwayBatting ? '▲' : '▼'}`;
+    $('#replayHeadlineTag').textContent = `#${clampedIdx + 1} • INN ${pa.inning}${isExtra ? ' (EXTRA)' : ''}${isAwayBatting ? '▲' : '▼'}`;
     $('#replayHeadlineText').textContent = `${bName} al bate contra ${pName}...`;
 
     // Renderizar defensivos del equipo defensor
@@ -4216,13 +4256,24 @@
     const aName = teamName(replayState.game.away);
     const hName = teamName(replayState.game.home);
     const halfTxt = isAwayBatting ? 'ALTA ▲' : 'BAJA ▼';
-    $('#replayInningEndTitle').textContent = `🔔 FIN DEL INNING ${inning} (${halfTxt})`;
-    $('#replayInningEndScore').textContent = `${aName} ${awayRuns} — ${homeRuns} ${hName}`;
-    if (nextPa) {
-      const nextHalfTxt = nextPa.half === 'away' ? 'Alta ▲' : 'Baja ▼';
-      $('#replayInningEndNext').textContent = `Siguiente: Inning ${nextPa.inning} (${nextHalfTxt}) al bate ${teamName(nextPa.half === 'away' ? replayState.game.away : replayState.game.home)} ➔`;
+    const regInnings = Math.max(1, Number(replayState.game.innings) || 7);
+    const isTiedAtEndOfInning = !isAwayBatting && awayRuns === homeRuns && inning >= regInnings;
+
+    if (isTiedAtEndOfInning) {
+      $('#replayInningEndTitle').innerHTML = `🔔 FIN DEL INNING ${inning} — <span style="color:var(--yellow)">PARTIDO EMPATADO</span>`;
+      $('#replayInningEndScore').textContent = `${aName} ${awayRuns} — ${homeRuns} ${hName}`;
+      $('#replayInningEndNext').innerHTML = `⚡ <b>¡EXTRA INNING!</b> Inning ${nextPa ? nextPa.inning : inning + 1} (${nextPa?.half === 'away' ? 'Alta ▲' : 'Baja ▼'}) al bate ${teamName(nextPa?.half === 'away' ? replayState.game.away : replayState.game.home)} ➔`;
     } else {
-      $('#replayInningEndNext').textContent = 'Preparando siguiente turno...';
+      const isExtra = inning > regInnings;
+      $('#replayInningEndTitle').textContent = `🔔 FIN DEL INNING ${inning} (${halfTxt})${isExtra ? ' • EXTRA INNING' : ''}`;
+      $('#replayInningEndScore').textContent = `${aName} ${awayRuns} — ${homeRuns} ${hName}`;
+      if (nextPa) {
+        const nextHalfTxt = nextPa.half === 'away' ? 'Alta ▲' : 'Baja ▼';
+        const nextIsExtra = nextPa.inning > regInnings;
+        $('#replayInningEndNext').textContent = `Siguiente: Inning ${nextPa.inning}${nextIsExtra ? ' (Extra Inning)' : ''} (${nextHalfTxt}) al bate ${teamName(nextPa.half === 'away' ? replayState.game.away : replayState.game.home)} ➔`;
+      } else {
+        $('#replayInningEndNext').textContent = 'Preparando siguiente turno...';
+      }
     }
     overlay.style.display = 'flex';
   }
@@ -4232,8 +4283,8 @@
     if (!overlay) return;
     const aName = teamName(g.away);
     const hName = teamName(g.home);
-    const winnerId = g.awayScore > g.homeScore ? g.away : g.homeScore > g.awayScore ? g.home : null;
-    const winnerTxt = winnerId ? `🏆 Ganador: ${teamName(winnerId)}` : 'Empate oficial';
+    const winnerId = g.homeScore > g.awayScore ? g.home : g.away;
+    const winnerTxt = `🏆 Ganador: ${teamName(winnerId)}`;
 
     $('#replayGameOverScore').textContent = `${aName} ${g.awayScore} — ${g.homeScore} ${hName}`;
     $('#replayGameOverWinner').textContent = winnerTxt;
@@ -4339,9 +4390,11 @@
       bar.innerHTML = '';
       return;
     }
+    const regInnings = Math.max(1, Number(replayState?.game?.innings) || 7);
     bar.innerHTML = uniqueInns.map(inn => {
       const firstIdx = events.findIndex(e => Number(e.inning) === inn);
-      return `<button type="button" class="btn-inn-chip ${inn === 1 ? 'active' : ''}" data-inn="${inn}" data-jump-idx="${firstIdx}">Inn ${inn}</button>`;
+      const isExtra = inn > regInnings;
+      return `<button type="button" class="btn-inn-chip ${inn === 1 ? 'active' : ''} ${isExtra ? 'btn-extra-inn' : ''}" data-inn="${inn}" data-jump-idx="${firstIdx}">${isExtra ? '⚡ Inn ' + inn : 'Inn ' + inn}</button>`;
     }).join('');
 
     $$('#replayInningsBar .btn-inn-chip').forEach(chip => {
@@ -4355,7 +4408,8 @@
   function renderReplayLinescore(g) {
     const tableEl = $('#replayLinescoreTable');
     if (!tableEl) return;
-    const maxInn = Math.max(7, ...(g.batLog || []).map(x => Number(x.inning) || 1));
+    const regInn = Math.max(1, Number(g.innings) || 7);
+    const maxInn = Math.max(regInn, ...(g.batLog || []).map(x => Number(x.inning) || 1));
     const awayInnRuns = Array(maxInn).fill(0);
     const homeInnRuns = Array(maxInn).fill(0);
 
@@ -7194,6 +7248,13 @@
         g = { id: gid, batLog: [] };
         db.games.push(g);
       }
+      const homeScore = Number(f.get('homeScore')) || 0;
+      const awayScore = Number(f.get('awayScore')) || 0;
+      if (homeScore === awayScore) {
+        alert('En ROSMIL LEAGUE los partidos de béisbol no pueden terminar en empate. Debe existir un equipo ganador.');
+        return;
+      }
+
       Object.assign(g, {
         season,
         series,
@@ -7203,8 +7264,8 @@
         home,
         away,
         stadium: f.get('stadium'),
-        homeScore: Number(f.get('homeScore')) || 0,
-        awayScore: Number(f.get('awayScore')) || 0,
+        homeScore,
+        awayScore,
         innings: Math.max(1, Number(f.get('innings')) || 7),
         outsPerInning: Math.max(1, Number(f.get('outsPerInning')) || 3),
         status: 'Finalizado'
@@ -7431,6 +7492,10 @@
     if ($('#btnLiveFinishGameEarly')) {
       $('#btnLiveFinishGameEarly').addEventListener('click', () => {
         if (!checkAdmin()) return;
+        if (liveGameState.awayScore === liveGameState.homeScore) {
+          alert('No es posible finalizar el partido en empate. En ROSMIL LEAGUE los partidos no pueden terminar empatados; el encuentro debe continuar a Extra Inning hasta que haya un ganador.');
+          return;
+        }
         if (confirm('¿Finalizar el partido inmediatamente? Se guardarán todas las estadísticas registradas hasta el momento.')) {
           finishLiveGame(false);
         }
@@ -7478,28 +7543,12 @@
       });
     }
 
-    if ($('#btnLiveNextInning')) {
-      $('#btnLiveNextInning').addEventListener('click', advanceToNextInning);
-    }
-
-    if ($('#btnLiveCloseGameOver')) {
-      $('#btnLiveCloseGameOver').addEventListener('click', () => finishLiveGame(true));
-    }
-
     if ($('#btnLiveChangePitcher')) {
       $('#btnLiveChangePitcher').addEventListener('click', openPitcherChangeModal);
     }
 
     if ($('#btnConfirmPitcherChange')) {
       $('#btnConfirmPitcherChange').addEventListener('click', confirmPitcherChange);
-    }
-
-    if ($('#btnLiveFinishGameEarly')) {
-      $('#btnLiveFinishGameEarly').addEventListener('click', () => {
-        if (confirm('¿Deseas finalizar este partido inmediatamente y registrar el resultado oficial actual?')) {
-          finishLiveGame(true);
-        }
-      });
     }
 
     // ----------------------------------------------------

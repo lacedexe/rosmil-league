@@ -4145,6 +4145,23 @@ tr:hover td {
   border-color: var(--yellow) !important;
 }
 
+.btn-inn-chip.btn-extra-inn {
+  border-color: rgba(239, 68, 68, 0.6) !important;
+  color: #fca5a5 !important;
+  background: rgba(239, 68, 68, 0.15) !important;
+}
+
+.btn-inn-chip.btn-extra-inn:hover {
+  border-color: #ef4444 !important;
+  color: #fff !important;
+}
+
+.btn-inn-chip.btn-extra-inn.active {
+  background: #ef4444 !important;
+  color: #fff !important;
+  border-color: #ef4444 !important;
+}
+
 /* Bandeja de Play-by-Play Sincronizado */
 .replay-pbp-tray {
   flex: 1 !important;
