@@ -529,45 +529,110 @@
   }
 
   // ----------------------------------------------------
-  // SISTEMA DE PERSISTENCIA Y SINCRONIZACIÓN
+  // SISTEMA DE PERSISTENCIA Y SINCRONIZACIÓN RESILIENTE
   // ----------------------------------------------------
+  let isFirestoreSaving = false;
+  let pendingFirestoreSave = false;
+
   function updateStorageStatus(msg) {
     const el = $('#storageStatus');
     if (el) el.textContent = msg;
   }
 
-  function save() {
+  // Sanitizador profundo: elimina valores undefined, NaN o Infinity que provocan errores en Firestore
+  function sanitizeForStorage(obj) {
+    if (obj === null || obj === undefined) return null;
+    if (typeof obj !== 'object') {
+      if (typeof obj === 'number' && (isNaN(obj) || !isFinite(obj))) return 0;
+      return obj;
+    }
+    if (Array.isArray(obj)) {
+      return obj.map(item => sanitizeForStorage(item));
+    }
+    const clean = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (v === undefined) {
+        clean[k] = null;
+      } else {
+        clean[k] = sanitizeForStorage(v);
+      }
+    }
+    return clean;
+  }
+
+  // Sincronización en cola ordenada hacia Firebase (evita colisiones y saturación de peticiones)
+  function syncToFirestore() {
+    if (typeof firebaseInitialized === 'undefined' || !firebaseInitialized || !firestoreDb) {
+      updateStorageStatus('🟡 Datos locales');
+      return;
+    }
+    if (isFirestoreSaving) {
+      pendingFirestoreSave = true;
+      return;
+    }
+    isFirestoreSaving = true;
+    pendingFirestoreSave = false;
+    updateStorageStatus('🔄 Guardando en Firebase...');
+
+    const cleanDb = sanitizeForStorage(db);
+    firestoreDb
+      .collection('leagues')
+      .doc('main')
+      .set(cleanDb)
+      .then(() => {
+        updateStorageStatus('🟢 En la nube (Firebase)');
+      })
+      .catch(err => {
+        console.error('Error al guardar en Firebase Firestore:', err);
+        updateStorageStatus('🔴 Error sincronización (' + (err.code || 'Guardado local') + ')');
+      })
+      .finally(() => {
+        isFirestoreSaving = false;
+        if (pendingFirestoreSave) {
+          syncToFirestore();
+        }
+      });
+  }
+
+  function save(options = { render: true, syncCloud: true }) {
     if (db.settings && db.settings.adminPin) {
       delete db.settings.adminPin;
     }
     db.updatedAt = Date.now();
 
+    // Sincronizar referencia del juego en vivo activo con el array global de juegos
+    if (liveGameState.active && liveGameState.game && liveGameState.gameId) {
+      const gIdx = db.games.findIndex(x => x.id === liveGameState.gameId);
+      if (gIdx >= 0) {
+        db.games[gIdx] = liveGameState.game;
+      }
+    }
+
+    const cleanDb = sanitizeForStorage(db);
+
+    // 1. Guardado inmediato y seguro en localStorage
     try {
-      localStorage.setItem(KEY, JSON.stringify(db));
+      localStorage.setItem(KEY, JSON.stringify(cleanDb));
       if (liveGameState.active && liveGameState.gameId) {
         localStorage.setItem('rosmil_active_game_id', liveGameState.gameId);
       }
     } catch (e) {
       console.error('Error guardando en localStorage:', e);
+      if (e.name === 'QuotaExceededError') {
+        alert('⚠️ Atención: El almacenamiento local del navegador ha alcanzado su límite de cuota.');
+      }
     }
-    renderAll();
 
-    // Sincronización en la nube (Firebase Firestore)
-    if (typeof firebaseInitialized !== 'undefined' && firebaseInitialized && firestoreDb) {
-      updateStorageStatus('🔄 Guardando en Firebase...');
-      firestoreDb
-        .collection('leagues')
-        .doc('main')
-        .set(db)
-        .then(() => {
-          updateStorageStatus('🟢 En la nube (Firebase)');
-        })
-        .catch(err => {
-          console.error('Error al guardar en Firebase:', err);
-          updateStorageStatus('🔴 Error sincronización (Guardado local)');
-        });
-    } else {
-      updateStorageStatus('🟡 Datos locales');
+    if (options.render !== false) {
+      renderAll();
+      if (liveGameState.active) {
+        renderLiveGameUI();
+      }
+    }
+
+    // 2. Sincronización en la nube mediante cola de escritura
+    if (options.syncCloud !== false) {
+      syncToFirestore();
     }
   }
 
@@ -6070,11 +6135,7 @@
             events: [],
             settings: { leagueName: 'ROSMIL LEAGUE' }
           };
-          if (typeof firebaseInitialized !== 'undefined' && firebaseInitialized && firestoreDb) {
-            firestoreDb.collection('leagues').doc('main').set(db);
-          }
-          recalcStats();
-          renderAll();
+          save();
           alert('Todos los datos han sido eliminados.');
           show('home');
         }
@@ -6522,38 +6583,60 @@
     if (mid === 'adminLoginModal') prepareAdminLoginModal();
   }
 
-  function readImage(file, cb) {
+  function readImage(file, cb, maxDimension = 260) {
     if (!file || !file.size) {
       cb(null);
       return;
     }
-    const r = new FileReader();
-    r.onload = () => {
-      const img = new Image();
-      img.onload = () => {
-        const maxDim = 320;
-        let w = img.width;
-        let h = img.height;
-        if (w > maxDim || h > maxDim) {
-          if (w > h) {
-            h = Math.round((h * maxDim) / w);
-            w = maxDim;
-          } else {
-            w = Math.round((w * maxDim) / h);
-            h = maxDim;
-          }
+    try {
+      const r = new FileReader();
+      r.onload = () => {
+        try {
+          const img = new Image();
+          img.onload = () => {
+            try {
+              const maxDim = maxDimension;
+              let w = img.width;
+              let h = img.height;
+              if (w > maxDim || h > maxDim) {
+                if (w > h) {
+                  h = Math.round((h * maxDim) / w);
+                  w = maxDim;
+                } else {
+                  w = Math.round((w * maxDim) / h);
+                  h = maxDim;
+                }
+              }
+              const canvas = document.createElement('canvas');
+              canvas.width = Math.max(1, w);
+              canvas.height = Math.max(1, h);
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0, w, h);
+              cb(canvas.toDataURL('image/jpeg', 0.78));
+            } catch (err) {
+              console.warn('Error en canvas toDataURL, usando fallback:', err);
+              cb(r.result);
+            }
+          };
+          img.onerror = () => {
+            console.warn('Error cargando imagen:', file.name);
+            cb(null);
+          };
+          img.src = r.result;
+        } catch (err) {
+          console.warn('Error en FileReader onload:', err);
+          cb(null);
         }
-        const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, w, h);
-        cb(canvas.toDataURL('image/jpeg', 0.82));
       };
-      img.onerror = () => cb(r.result);
-      img.src = r.result;
-    };
-    r.readAsDataURL(file);
+      r.onerror = () => {
+        console.warn('Error leyendo archivo:', file.name);
+        cb(null);
+      };
+      r.readAsDataURL(file);
+    } catch (e) {
+      console.warn('Excepción en readImage:', e);
+      cb(null);
+    }
   }
 
   function populateSelects() {
@@ -7675,16 +7758,16 @@
       $('#swFlyerFile').addEventListener('change', e => {
         const file = e.target.files[0];
         if (!file) return;
-        const reader = new FileReader();
-        reader.onload = ev => {
-          seasonWizardState.flyer = ev.target.result;
-          const prev = $('#swFlyerPreview');
-          if (prev) {
-            prev.src = ev.target.result;
-            prev.style.display = 'block';
+        readImage(file, compressedUrl => {
+          if (compressedUrl) {
+            seasonWizardState.flyer = compressedUrl;
+            const prev = $('#swFlyerPreview');
+            if (prev) {
+              prev.src = compressedUrl;
+              prev.style.display = 'block';
+            }
           }
-        };
-        reader.readAsDataURL(file);
+        }, 400);
       });
     }
 
@@ -7767,22 +7850,33 @@
         .collection('leagues')
         .doc('main')
         .onSnapshot(
+          { includeMetadataChanges: true },
           doc => {
+            // Si el snapshot proviene de una escritura local pendiente, NO sobreescribir memoria local
+            if (doc.metadata && doc.metadata.hasPendingWrites) {
+              updateStorageStatus('🟢 En la nube (Firebase)');
+              return;
+            }
+
             if (doc.exists) {
               const cloudData = doc.data();
               if (cloudData && typeof cloudData === 'object') {
                 const cloudUpdated = Number(cloudData.updatedAt) || 0;
                 const localUpdated = Number(db.updatedAt) || 0;
-                const cloudGames = Array.isArray(cloudData.games) ? cloudData.games.length : 0;
-                const localGames = Array.isArray(db.games) ? db.games.length : 0;
 
-                // Proteger datos locales más recientes de ser sobrescritos por la nube
-                if (cloudUpdated < localUpdated && localGames >= cloudGames) {
-                  firestoreDb.collection('leagues').doc('main').set(db);
+                // Si la versión local es más reciente que la nube, enviar la versión local a Firebase
+                if (localUpdated > cloudUpdated) {
+                  syncToFirestore();
+                  return;
+                }
+
+                // Si los tiempos son iguales, ya estamos sincronizados
+                if (cloudUpdated === localUpdated) {
                   updateStorageStatus('🟢 En la nube (Firebase)');
                   return;
                 }
 
+                // Si la nube es más reciente (otro dispositivo, primera carga o sesión remota):
                 db = {
                   teams: Array.isArray(cloudData.teams) ? cloudData.teams : [],
                   players: Array.isArray(cloudData.players) ? cloudData.players : [],
@@ -7802,19 +7896,36 @@
                 db.players.forEach(p => {
                   if (!Array.isArray(p.teamHistory)) p.teamHistory = [];
                 });
+
+                // Reconectar puntero del juego en vivo activo para preservar anotación sin desconexión
+                if (liveGameState.active && liveGameState.gameId) {
+                  const activeG = db.games.find(g => g.id === liveGameState.gameId);
+                  if (activeG) {
+                    liveGameState.game = activeG;
+                  }
+                }
+
                 try {
-                  localStorage.setItem(KEY, JSON.stringify(db));
-                } catch (e) {}
+                  localStorage.setItem(KEY, JSON.stringify(sanitizeForStorage(db)));
+                } catch (e) {
+                  console.error('Error guardando snapshot en localStorage:', e);
+                }
+
                 recalcStats();
                 renderAll();
                 updateActiveGameBanner();
+                if (liveGameState.active) {
+                  renderLiveGameUI();
+                }
                 updateStorageStatus('🟢 En la nube (Firebase)');
               }
             } else {
+              // Si el documento en Firebase no existe pero tenemos datos locales, inicializarlo
               if (db.teams.length || db.players.length || db.seasons.length || db.games.length) {
-                firestoreDb.collection('leagues').doc('main').set(db);
+                syncToFirestore();
+              } else {
+                updateStorageStatus('🟢 Firebase conectado (Listo para registrar)');
               }
-              updateStorageStatus('🟢 Firebase conectado (Nuevo torneo)');
             }
           },
           err => {
@@ -7843,6 +7954,9 @@
     getReplayState: () => replayState,
     getLiveGameState: () => liveGameState,
     getDb: () => db,
+    save,
+    syncToFirestore,
+    sanitizeForStorage,
     getFirebaseAdminCredentials,
     setFirebaseAdminCredentials,
     verifyAdminCredentials,
