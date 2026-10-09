@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <!-- Stylesheet -->
-  <link rel="stylesheet" href="css/style.css?v=rosmil_0.3.6">
+  <link rel="stylesheet" href="css/style.css?v=rosmil_0.3.8">
 </head>
 <body>
   <div class="app">
@@ -1445,8 +1445,8 @@
         <div class="overlay-scoreboard" id="liveGameOverScore">TIGRES 7 — 4 LEONES</div>
         <div id="liveWinnerLoserBadge" style="margin:16px 0; font-size:18px;"></div>
         <div class="formactions" style="justify-content:center; gap:14px; margin-top:20px;">
-          <button type="button" class="btn blue" id="btnLiveGoToReplayFromOver">🎬 Ver Replay 2D</button>
-          <button type="button" class="btn yellow btn-large-start" id="btnLiveCloseGameOver">
+          <button type="button" class="btn yellow btn-large-start" id="btnLiveGoToReplayFromOver">▶ VER PARTIDO COMPLETO 2D</button>
+          <button type="button" class="btn" id="btnLiveCloseGameOver">
             GUARDAR Y SALIR ➔
           </button>
         </div>
@@ -1482,41 +1482,76 @@
     </div>
   </div>
 
-  <!-- Modal: 2D Game Replay & Resumen Oficial (ROSMIL LEAGUE 0.3) -->
+  <!-- Modal: PARTIDO COMPLETO 2D — REPRODUCCIÓN AUTOMÁTICA DEL JUEGO (ROSMIL LEAGUE 0.3) -->
   <div class="modal live-fullscreen-modal" id="gameReplayModal">
     <div class="replay-modal-box">
-      <!-- Encabezado del Replay -->
-      <div class="replay-header">
-        <div class="replay-header-info">
-          <div class="eyebrow" style="color:var(--yellow)">ROSMIL LEAGUE 0.3 • 2D GAME REPLAY & RESUMEN INTERACTIVO</div>
-          <h2 id="replayGameTitle" style="margin:2px 0 6px">Visitante vs Local</h2>
-          <div class="muted" id="replayGameMeta">Estadio Quisqueya • Temporada 2026</div>
+      <!-- 1. Marcador Superior Oficial del Replay 2D en Pantalla Completa -->
+      <div class="replay-scoreboard-bar">
+        <!-- Equipo Visitante -->
+        <div class="replay-team away">
+          <div class="replay-team-flag" id="replayAwayFlag">⚾</div>
+          <div class="replay-team-info">
+            <span class="replay-team-name" id="replayAwayName">Visitante</span>
+            <span class="replay-tag" id="replayAwayRoleTag">BATEO</span>
+          </div>
+          <span class="replay-score-num" id="replayAwayScore">0</span>
         </div>
-        <div class="actions">
-          <button type="button" class="btn close" id="btnCloseReplayModal">✕ Cerrar Replay</button>
+
+        <!-- Estado Central: Entrada, Outs, y R-H-E en Vivo -->
+        <div class="replay-center-status">
+          <div class="replay-inning-badge" id="replayInningBadge">INNING 1 (ALTA ▲)</div>
+          <div class="replay-outs-display">
+            <span class="replay-outs-label">OUTS:</span>
+            <div class="out-dots" id="replayOutDots">
+              <span class="out-dot"></span>
+              <span class="out-dot"></span>
+              <span class="out-dot"></span>
+            </div>
+          </div>
+          <!-- Mini R - H - E -->
+          <div class="replay-rhe-box">
+            <table class="rhe-table">
+              <thead><tr><th>EQ</th><th>C</th><th>H</th><th>E</th></tr></thead>
+              <tbody>
+                <tr><td id="replayRheAwayName">VIS</td><td id="replayRheAwayR">0</td><td id="replayRheAwayH">0</td><td id="replayRheAwayE">0</td></tr>
+                <tr><td id="replayRheHomeName">LOC</td><td id="replayRheHomeR">0</td><td id="replayRheHomeH">0</td><td id="replayRheHomeE">0</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Equipo Local -->
+        <div class="replay-team home">
+          <span class="replay-score-num" id="replayHomeScore">0</span>
+          <div class="replay-team-info">
+            <span class="replay-team-name" id="replayHomeName">Local</span>
+            <span class="replay-tag" id="replayHomeRoleTag">DEFENSA</span>
+          </div>
+          <div class="replay-team-flag" id="replayHomeFlag">⚾</div>
+        </div>
+
+        <!-- Barra de Herramientas: Sonido, Velocidad, Salir -->
+        <div class="replay-top-tools">
+          <button type="button" class="btn btn-sm btn-subtle" id="btnReplayAudioToggle" title="Activar/Desactivar efectos de sonido 2D">🔊 Sonido: ON</button>
+          <button type="button" class="btn btn-sm btn-subtle close" id="btnCloseReplayModal" title="Salir de la reproducción completa">✕ Salir</button>
         </div>
       </div>
 
-      <!-- Linescore Table (Inning por Inning) -->
-      <div class="linescore-wrap" id="replayLinescoreWrap">
-        <table class="linescore-table" id="replayLinescoreTable"></table>
-      </div>
-
-      <!-- Cuerpo Principal del Replay -->
-      <div class="replay-grid-body">
-        <!-- Panel Izquierdo: Estadio 2D Interactivo con Reproductor -->
-        <div class="replay-stadium-panel">
+      <!-- 2. Grid Principal del Replay: Diamante 2D a la Izquierda y Consola de Transmisión a la Derecha -->
+      <div class="replay-theater-grid">
+        <!-- Columna Izquierda: Diamante 2D Videojuego Arcade -->
+        <div class="replay-stadium-card">
           <div class="stadium-card-header">
-            <span>⚾ REPLAY 2D • SIMULACIÓN JUGADA A JUGADA</span>
-            <span class="stadium-runners-pill" id="replayEventCountBadge">Jugada 0 de 0</span>
+            <span>⚾ CAMPO 2D • PARTIDO COMPLETO</span>
+            <span class="stadium-runners-pill" id="replayRunnersPill">Bases Limpias</span>
           </div>
 
           <div class="stadium-2d-canvas" id="replayStadiumCanvas">
-            <!-- Outfield & Diamond structure -->
+            <!-- Outfield & Warning Track -->
             <div class="stadium-outfield-turf"></div>
             <div class="stadium-warning-strip"></div>
 
-            <!-- Posiciones Defensivas con Fotos Reales (Requisitos 1 y 5) -->
+            <!-- Posiciones Defensivas con Fotos Reales -->
             <div class="stadium-fielder-node cf" id="replayFielderCF" data-pos="CF">
               <div class="fielder-avatar-slot" id="replayFielderAvatarCF"></div>
               <span class="fielder-pos-pill">CF</span>
@@ -1558,11 +1593,13 @@
               <span class="fielder-name-pill" id="replayFielderNameC">C</span>
             </div>
 
+            <!-- Infield Arcilla y Césped Interior -->
             <div class="stadium-clay-diamond"></div>
             <div class="stadium-inner-turf"></div>
             <div class="stadium-foul-line foul-left"></div>
             <div class="stadium-foul-line foul-right"></div>
-            
+
+            <!-- Montículo de Lanzador (Pitcher con Foto Real) -->
             <div class="stadium-mound">
               <div class="mound-rubber"></div>
               <div class="stadium-pitcher-badge" id="replayMoundPitcherBadge">
@@ -1572,7 +1609,7 @@
               </div>
             </div>
 
-            <!-- Bases & Runners with Real Profile Photos -->
+            <!-- Bases y Ranuras de Corredores (1B, 2B, 3B, Home) -->
             <div class="stadium-base base-2b" id="replayBase2B">
               <div class="base-pillow"></div>
               <div class="base-runner-slot" id="replayRunnerSlot2B"></div>
@@ -1590,66 +1627,121 @@
               <div class="base-runner-slot" id="replayRunnerSlotHome"></div>
             </div>
 
-            <!-- Pelota de Béisbol y Splash en Replay -->
+            <!-- Pelota Animada -->
             <div class="stadium-animated-ball" id="replayStadiumBall" style="display:none"></div>
+
+            <!-- Splash / Banner Animado de Jugada en el Campo -->
             <div class="stadium-play-splash" id="replayStadiumSplash" style="display:none">
-              <div class="splash-icon">⚾</div>
-              <div class="splash-text">HIT</div>
+              <div class="splash-icon">💥</div>
+              <div class="splash-text">HOME RUN</div>
+            </div>
+
+            <!-- Popup de Carrera Flotante al cruzar Home -->
+            <div class="stadium-run-score-popup" id="replayScorePopup" style="display:none">
+              ⭐ ¡CARRERA ANOTADA! +1
+            </div>
+
+            <!-- Overlay de Transición: FIN DE ENTRADA -->
+            <div class="replay-overlay-center" id="replayInningEndOverlay" style="display:none">
+              <div class="overlay-icon">🔔</div>
+              <h3 id="replayInningEndTitle" style="color:var(--yellow);font-size:24px;margin:4px 0">FIN DEL 1ER INNING</h3>
+              <div id="replayInningEndScore" style="font-size:20px;font-weight:900;color:#fff;margin:6px 0">VISITANTE 0 — 0 LOCAL</div>
+              <div class="muted" id="replayInningEndNext" style="font-size:12px">Siguiente turno en breve...</div>
+            </div>
+
+            <!-- Overlay de Celebración: FINAL DEL PARTIDO COMPLETO -->
+            <div class="replay-overlay-center game-over-overlay" id="replayGameOverOverlay" style="display:none">
+              <div class="overlay-icon">🏆</div>
+              <h2 style="color:var(--yellow);font-size:24px;margin:2px 0">FINAL DEL PARTIDO</h2>
+              <div id="replayGameOverScore" style="font-size:22px;font-weight:900;color:#fff;margin:4px 0">EQUIPO A 8 — 5 EQUIPO B</div>
+              <div id="replayGameOverWinner" style="font-size:13px;color:#4ade80;font-weight:800;margin-bottom:6px">Victoria oficial</div>
+              <div id="replayMvpArea" class="replay-mvp-container"></div>
+              <div style="display:flex;gap:8px;justify-content:center;margin-top:8px">
+                <button type="button" class="btn yellow btn-sm" id="btnReplayRestartGame">🔄 Volver a Ver Partido</button>
+                <button type="button" class="btn btn-sm close" id="btnReplayExitGame">✕ Salir</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Columna Derecha: Transmisión, Controles y Play-by-Play -->
+        <div class="replay-telecast-col">
+          <!-- Enfrentamiento Bateador vs Pitcher -->
+          <div class="live-matchup-bar">
+            <div class="matchup-box batter-side">
+              <small>BATEADOR EN TURNO</small>
+              <div class="matchup-person">
+                <span class="matchup-avatar" id="replayBatterPhoto">👤</span>
+                <div>
+                  <b id="replayBatterName">Bateador</b>
+                  <span class="matchup-meta" id="replayBatterMeta">#1 en orden • Turno 1</span>
+                </div>
+              </div>
+            </div>
+            <div class="matchup-vs">VS</div>
+            <div class="matchup-box pitcher-side">
+              <small>LANZADOR EN EL MONTÍCULO</small>
+              <div class="matchup-person">
+                <span class="matchup-avatar" id="replayPitcherPhoto">👤</span>
+                <div>
+                  <b id="replayPitcherName">Pitcher</b>
+                  <span class="matchup-meta" id="replayPitcherMeta">Lanzador Activo</span>
+                </div>
+              </div>
             </div>
           </div>
 
-          <!-- Banner Informativo del Evento Actual del Replay -->
-          <div class="replay-narrative-banner" id="replayNarrativeBanner">
-            <span class="narrative-inn" id="replayNarrativeInn">Inn 1▲</span>
-            <span class="narrative-text" id="replayNarrativeText">Selecciona reproducir o una jugada de la línea de tiempo.</span>
+          <!-- Titular Narrativo de la Jugada en Curso -->
+          <div class="replay-headline-card">
+            <div class="headline-tag" id="replayHeadlineTag">JUGADA #1</div>
+            <div class="headline-body" id="replayHeadlineText">Preparando el primer lanzamiento del partido...</div>
           </div>
 
-          <!-- Controles de Reproducción 2D -->
-          <div class="replay-controls-bar">
-            <button type="button" class="btn btn-ctrl" id="btnReplayPrev" title="Jugada anterior">⏪ Anterior</button>
-            <button type="button" class="btn yellow btn-ctrl" id="btnReplayPlayToggle">▶ Reproducir</button>
-            <button type="button" class="btn btn-ctrl" id="btnReplayNext" title="Siguiente jugada">⏩ Siguiente</button>
-            
+          <!-- Controles de Reproducción y Velocidad -->
+          <div class="replay-controls-cluster">
+            <div class="replay-playback-buttons">
+              <button type="button" class="btn btn-ctrl" id="btnReplayPrev" title="Jugada anterior">⏮ Anterior</button>
+              <button type="button" class="btn yellow btn-ctrl btn-play-main" id="btnReplayPlayToggle">⏸ Pausar</button>
+              <button type="button" class="btn btn-ctrl" id="btnReplayNext" title="Siguiente jugada">⏭ Siguiente</button>
+              <button type="button" class="btn btn-ctrl" id="btnReplayRestart" title="Reiniciar partido">🔄 Reiniciar</button>
+            </div>
+
             <div class="speed-selector">
-              <span class="muted" style="font-size:12px">Velocidad:</span>
+              <span class="muted" style="font-size:11px">Velocidad:</span>
               <button type="button" class="speed-btn" data-speed="0.5">0.5x</button>
               <button type="button" class="speed-btn active" data-speed="1">1x</button>
+              <button type="button" class="speed-btn" data-speed="1.5">1.5x</button>
               <button type="button" class="speed-btn" data-speed="2">2x</button>
             </div>
           </div>
 
-          <!-- Timeline Interactivo Clickable -->
-          <div class="replay-timeline-container">
-            <div class="timeline-header">
-              <small>LÍNEA DE TIEMPO DEL PARTIDO (Haz clic en cualquier jugada)</small>
+          <!-- Barra de Progreso del Partido -->
+          <div class="replay-progress-wrap">
+            <div class="progress-labels">
+              <span id="replayProgressText">Jugada 1 de 45</span>
+              <span id="replayProgressInning">Inning 1▲ • 0 Outs</span>
             </div>
-            <div class="replay-timeline-track" id="replayTimelineTrack"></div>
-          </div>
-        </div>
-
-        <!-- Panel Derecho: Información de Jugada Actual, MVP y Play-by-Play Completo -->
-        <div class="replay-sidebar">
-          <!-- Detalle de la Jugada Actual Reconstruida -->
-          <div class="replay-current-play-card" id="replayCurrentPlayCard">
-            <h4>⚾ DETALLE DE LA JUGADA</h4>
-            <div id="replayCurrentPlayDetail" class="current-play-detail-box">
-              <div class="muted">Selecciona una jugada para ver los detalles.</div>
-            </div>
+            <input type="range" class="replay-progress-slider" id="replayProgressSlider" min="0" max="100" value="0">
           </div>
 
-          <!-- MVP Oficial del Partido Calculado -->
-          <div class="replay-mvp-card" id="replayMvpArea"></div>
+          <!-- Botones de Salto Rápido por Entrada (Innings) -->
+          <div class="replay-innings-bar" id="replayInningsBar"></div>
 
-          <!-- Play-by-Play Completo de TODAS las jugadas (Requisito 9) -->
-          <div class="replay-pbp-panel">
-            <h4>📋 TODAS LAS JUGADAS DEL PARTIDO</h4>
-            <div class="pbp-events-scroll" id="replayPbpList"></div>
+          <!-- Bandeja de Play-by-Play Sincronizado -->
+          <div class="replay-pbp-tray">
+            <div class="pbp-tray-head">
+              <small>LÍNEA DE TIEMPO OFICIAL (<span id="replayPbpCount">0</span> jugadas)</small>
+              <button type="button" class="btn btn-sm btn-subtle" id="btnReplayToggleBoxscore">📊 Ver Boxscore</button>
+            </div>
+            <div class="replay-pbp-scroll" id="replayPbpList"></div>
+            <!-- Boxscore Tab Content (hidden by default) -->
+            <div class="replay-boxscore-tab" id="replayBoxscoreTab" style="display:none">
+              <table class="linescore-table" id="replayLinescoreTable"></table>
+              <div id="replayLinescoreDetail" style="margin-top:8px"></div>
+            </div>
           </div>
         </div>
       </div>
-
-      <!-- Boxscore Detallado al fondo -->
-      <div class="replay-boxscore-section" id="replayBoxscoreArea"></div>
     </div>
   </div>
 
@@ -1659,6 +1751,6 @@
   <!-- Firebase Configuration -->
   <script src="js/firebase-config.js"></script>
   <!-- Application Logic -->
-  <script src="js/app.js?v=rosmil_0.3.6"></script>
+  <script src="js/app.js?v=rosmil_0.3.8"></script>
 </body>
 </html>

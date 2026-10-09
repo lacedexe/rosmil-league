@@ -611,6 +611,14 @@
     return db.teams.find(x => x.id === id)?.name || 'Sin equipo';
   }
 
+  function getTeam(id) {
+    return db.teams.find(x => x.id === id);
+  }
+
+  function getPlayer(id) {
+    return db.players.find(x => x.id === id);
+  }
+
   function seasonName(id) {
     return db.seasons.find(x => x.id === id)?.name || 'Sin temporada';
   }
@@ -3515,83 +3523,833 @@
   }
 
   // ----------------------------------------------------
-  // REPLAY 2D Y RESUMEN INTELIGENTE (REQUISITOS 1, 2, 5 Y 9)
+  // SINTETIZADOR DE EFECTOS DE SONIDO 2D (WEB AUDIO API)
   // ----------------------------------------------------
+  const ReplayAudio = {
+    ctx: null,
+    enabled: true,
+    init() {
+      if (!this.ctx && typeof window !== 'undefined') {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) this.ctx = new AudioCtx();
+      }
+      if (this.ctx && this.ctx.state === 'suspended') {
+        this.ctx.resume().catch(() => {});
+      }
+    },
+    pitch() {
+      if (!this.enabled) return;
+      this.init();
+      if (!this.ctx) return;
+      try {
+        const t = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(380, t);
+        osc.frequency.exponentialRampToValueAtTime(220, t + 0.18);
+        gain.gain.setValueAtTime(0.08, t);
+        gain.gain.linearRampToValueAtTime(0.001, t + 0.2);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.22);
+      } catch (_) {}
+    },
+    batCrack() {
+      if (!this.enabled) return;
+      this.init();
+      if (!this.ctx) return;
+      try {
+        const t = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(1400, t);
+        osc.frequency.exponentialRampToValueAtTime(160, t + 0.12);
+        gain.gain.setValueAtTime(0.35, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.16);
+
+        const osc2 = this.ctx.createOscillator();
+        const gain2 = this.ctx.createGain();
+        osc2.type = 'square';
+        osc2.frequency.setValueAtTime(650, t);
+        osc2.frequency.exponentialRampToValueAtTime(90, t + 0.08);
+        gain2.gain.setValueAtTime(0.2, t);
+        gain2.gain.linearRampToValueAtTime(0.001, t + 0.09);
+        osc2.connect(gain2);
+        gain2.connect(this.ctx.destination);
+        osc2.start(t);
+        osc2.stop(t + 0.1);
+      } catch (_) {}
+    },
+    homeRun() {
+      if (!this.enabled) return;
+      this.init();
+      if (!this.ctx) return;
+      try {
+        const notes = [523.25, 659.25, 783.99, 1046.50];
+        const startT = this.ctx.currentTime;
+        notes.forEach((freq, i) => {
+          const t = startT + i * 0.12;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, t);
+          gain.gain.setValueAtTime(0.25, t);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(t);
+          osc.stop(t + 0.36);
+        });
+      } catch (_) {}
+    },
+    out() {
+      if (!this.enabled) return;
+      this.init();
+      if (!this.ctx) return;
+      try {
+        const t = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(190, t);
+        osc.frequency.linearRampToValueAtTime(110, t + 0.22);
+        gain.gain.setValueAtTime(0.18, t);
+        gain.gain.linearRampToValueAtTime(0.001, t + 0.25);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.26);
+      } catch (_) {}
+    },
+    score() {
+      if (!this.enabled) return;
+      this.init();
+      if (!this.ctx) return;
+      try {
+        const notes = [783.99, 1046.50];
+        const startT = this.ctx.currentTime;
+        notes.forEach((freq, i) => {
+          const t = startT + i * 0.1;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, t);
+          gain.gain.setValueAtTime(0.22, t);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(t);
+          osc.stop(t + 0.32);
+        });
+      } catch (_) {}
+    },
+    strike() {
+      if (!this.enabled) return;
+      this.init();
+      if (!this.ctx) return;
+      try {
+        const t = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(340, t);
+        osc.frequency.exponentialRampToValueAtTime(220, t + 0.15);
+        gain.gain.setValueAtTime(0.16, t);
+        gain.gain.linearRampToValueAtTime(0.001, t + 0.18);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.2);
+      } catch (_) {}
+    },
+    inningEnd() {
+      if (!this.enabled) return;
+      this.init();
+      if (!this.ctx) return;
+      try {
+        const t = this.ctx.currentTime;
+        [587.33, 880].forEach(freq => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, t);
+          gain.gain.setValueAtTime(0.18, t);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(t);
+          osc.stop(t + 0.48);
+        });
+      } catch (_) {}
+    },
+    gameEnd() {
+      if (!this.enabled) return;
+      this.init();
+      if (!this.ctx) return;
+      try {
+        const notes = [523.25, 659.25, 783.99, 1046.50, 1318.51];
+        const startT = this.ctx.currentTime;
+        notes.forEach((freq, i) => {
+          const t = startT + i * 0.15;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, t);
+          gain.gain.setValueAtTime(0.28, t);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + (i === 4 ? 0.8 : 0.4));
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(t);
+          osc.stop(t + (i === 4 ? 0.85 : 0.42));
+        });
+      } catch (_) {}
+    }
+  };
+
+  // ----------------------------------------------------
+  // PARTIDO COMPLETO 2D — REPRODUCCIÓN AUTOMÁTICA DEL JUEGO
+  // ----------------------------------------------------
+  function clearReplayTimeouts() {
+    if (replayState && replayState.activeTimeouts) {
+      replayState.activeTimeouts.forEach(t => clearTimeout(t));
+      replayState.activeTimeouts = [];
+    }
+  }
+
+  function queueReplayTimeout(fn, ms) {
+    const spd = replayState?.speed || 1;
+    const scaledMs = Math.max(70, Math.round(ms / spd));
+    const t = setTimeout(fn, scaledMs);
+    if (replayState && replayState.activeTimeouts) {
+      replayState.activeTimeouts.push(t);
+    }
+    return t;
+  }
+
   function openGameReplay(gid) {
-    const g = getGame(gid);
+    const g = typeof gid === 'object' && gid !== null ? gid : getGame(gid);
     if (!g) return;
 
     closeModals();
-    $('#gameReplayModal').classList.add('open');
+    clearReplayTimeouts();
+    ReplayAudio.init();
 
-    // TODAS las jugadas en orden cronológico estricto (Requisito 9)
+    const events = Array.isArray(g.batLog) ? g.batLog.slice() : [];
+
     replayState = {
       game: g,
-      events: (g.batLog || []).slice(),
+      events,
       currentIndex: 0,
-      isPlaying: false,
-      intervalId: null,
-      speed: 1
+      isPlaying: true, // Reproducción continua automática por defecto
+      speed: 1,
+      activeTimeouts: []
     };
 
-    renderReplayHeader(g);
-    renderReplayLinescore(g);
-    renderReplayMVP(g);
-    renderReplayTimeline();
-    renderReplayPBP(g);
-    setReplayEventIndex(0);
+    $('#gameReplayModal').classList.add('open');
 
-    // Controles de reproducción
+    // Header y Marcador
+    const aName = teamName(g.away);
+    const hName = teamName(g.home);
+    const aTeam = getTeam(g.away);
+    const hTeam = getTeam(g.home);
+
+    $('#replayAwayName').textContent = aName;
+    $('#replayHomeName').textContent = hName;
+    $('#replayRheAwayName').textContent = (aName || 'VIS').slice(0, 7);
+    $('#replayRheHomeName').textContent = (hName || 'LOC').slice(0, 7);
+
+    $('#replayAwayFlag').innerHTML = aTeam?.logo
+      ? `<img src="${aTeam.logo}" alt="${esc(aName)}" />`
+      : '⚾';
+    $('#replayHomeFlag').innerHTML = hTeam?.logo
+      ? `<img src="${hTeam.logo}" alt="${esc(hName)}" />`
+      : '⚾';
+
+    // Rellenar Lista PBP y Timeline de Innings
+    renderReplayPBPList(g, events);
+    renderReplayInningsBar(events);
+    renderReplayLinescore(g);
+
+    // Controles de transporte
+    $('#btnReplayPlayToggle').textContent = '⏸ Pausar';
     $('#btnReplayPlayToggle').onclick = toggleReplayPlayback;
+
     $('#btnReplayPrev').onclick = () => {
-      if (replayState.currentIndex > 0) setReplayEventIndex(replayState.currentIndex - 1);
+      if (replayState.currentIndex > 0) {
+        executeReplayStep(replayState.currentIndex - 1);
+      }
     };
     $('#btnReplayNext').onclick = () => {
       if (replayState.currentIndex < replayState.events.length - 1) {
-        setReplayEventIndex(replayState.currentIndex + 1);
+        executeReplayStep(replayState.currentIndex + 1);
       }
     };
-    $$('.speed-btn').forEach(btn => {
+    $('#btnReplayRestart').onclick = () => {
+      replayState.isPlaying = true;
+      $('#btnReplayPlayToggle').textContent = '⏸ Pausar';
+      executeReplayStep(0);
+    };
+
+    // Toggle de Sonido
+    $('#btnReplayAudioToggle').onclick = () => {
+      ReplayAudio.enabled = !ReplayAudio.enabled;
+      $('#btnReplayAudioToggle').textContent = ReplayAudio.enabled ? '🔊 Sonido: ON' : '🔇 Sonido: OFF';
+    };
+    $('#btnReplayAudioToggle').textContent = ReplayAudio.enabled ? '🔊 Sonido: ON' : '🔇 Sonido: OFF';
+
+    // Botones de velocidad
+    $$('#gameReplayModal .speed-btn').forEach(btn => {
       btn.onclick = () => {
-        $$('.speed-btn').forEach(b => b.classList.remove('active'));
+        $$('#gameReplayModal .speed-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         replayState.speed = Number(btn.dataset.speed) || 1;
-        if (replayState.isPlaying) {
-          toggleReplayPlayback();
-          toggleReplayPlayback();
-        }
       };
     });
+
+    // Slider de progreso
+    const slider = $('#replayProgressSlider');
+    if (slider) {
+      slider.oninput = (e) => {
+        const pct = Number(e.target.value) || 0;
+        const targetIdx = Math.round((pct / 100) * (replayState.events.length - 1));
+        executeReplayStep(targetIdx);
+      };
+    }
+
+    // Toggle Box Score tab
+    const btnBox = $('#btnReplayToggleBoxscore');
+    if (btnBox) {
+      btnBox.onclick = () => {
+        const pbpList = $('#replayPbpList');
+        const boxTab = $('#replayBoxscoreTab');
+        if (boxTab.style.display === 'none') {
+          boxTab.style.display = 'block';
+          pbpList.style.display = 'none';
+          btnBox.textContent = '📋 Ver Jugadas';
+        } else {
+          boxTab.style.display = 'none';
+          pbpList.style.display = 'flex';
+          btnBox.textContent = '📊 Ver Boxscore';
+        }
+      };
+    }
+
+    // Botones en overlays
+    const btnRestartGame = $('#btnReplayRestartGame');
+    if (btnRestartGame) {
+      btnRestartGame.onclick = () => {
+        $('#replayGameOverOverlay').style.display = 'none';
+        replayState.isPlaying = true;
+        $('#btnReplayPlayToggle').textContent = '⏸ Pausar';
+        executeReplayStep(0);
+      };
+    }
+
+    // Iniciar automáticamente desde la primera jugada
+    if (events.length > 0) {
+      executeReplayStep(0);
+    } else {
+      showNoEventsReplay(g);
+    }
   }
 
   function toggleReplayPlayback() {
+    if (!replayState) return;
     if (replayState.isPlaying) {
-      clearInterval(replayState.intervalId);
       replayState.isPlaying = false;
+      clearReplayTimeouts();
       $('#btnReplayPlayToggle').textContent = '▶ Reproducir';
     } else {
       replayState.isPlaying = true;
       $('#btnReplayPlayToggle').textContent = '⏸ Pausar';
-      const delay = Math.max(900, Math.round(2400 / (replayState.speed || 1)));
-      replayState.intervalId = setInterval(() => {
-        if (replayState.currentIndex >= replayState.events.length - 1) {
-          clearInterval(replayState.intervalId);
-          replayState.isPlaying = false;
-          $('#btnReplayPlayToggle').textContent = '▶ Reproducir';
-          return;
-        }
-        setReplayEventIndex(replayState.currentIndex + 1);
-      }, delay);
+      if (replayState.currentIndex >= replayState.events.length - 1) {
+        executeReplayStep(0);
+      } else {
+        executeReplayStep(replayState.currentIndex + 1);
+      }
     }
   }
 
-  function renderReplayHeader(g) {
+  function updateOutDots(containerId, count, maxOuts = 3) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    let html = '';
+    for (let i = 0; i < maxOuts; i++) {
+      html += `<span class="out-dot ${i < count ? 'active' : ''}"></span>`;
+    }
+    el.innerHTML = html;
+  }
+
+  function getFielderPositionForResult(result) {
+    if (!result) return 'SS';
+    if (result === 'Single') return 'LF';
+    if (result === 'Double') return 'CF';
+    if (result === 'Triple') return 'RF';
+    if (result === 'Home Run') return 'CF';
+    if (result.includes('Strikeout')) return 'C';
+    if (result === 'Groundout' || result.includes('out')) return 'SS';
+    if (result === 'Flyout') return 'CF';
+    if (result === 'Reached Error' || result === 'Error') return '3B';
+    if (result === 'Sac Fly') return 'CF';
+    if (result === 'Walk') return 'C';
+    return 'SS';
+  }
+
+  function formatPlayNarrative(batterName, result, rbi, runsScored) {
+    const rbiTxt = rbi > 0 ? ` (+${rbi} RBI)` : runsScored > 0 ? ` (+${runsScored} Carrera${runsScored > 1 ? 's' : ''})` : '';
+    if (result === 'Home Run') {
+      return `🔥 ¡CUADRANGULAR! ${batterName} conecta un potente HOME RUN!${rbiTxt}`;
+    }
+    if (result === 'Triple') {
+      return `⚡ ¡TRIPLE! ${batterName} castiga la pelota hasta la zona de advertencia.${rbiTxt}`;
+    }
+    if (result === 'Double') {
+      return `🥈 ¡DOBLE! ${batterName} coloca un batazo sólido en el callejón.${rbiTxt}`;
+    }
+    if (result === 'Single') {
+      return `⚾ ¡HIT! ${batterName} conecta un imparable al jardín.${rbiTxt}`;
+    }
+    if (result.includes('Strikeout')) {
+      return `🛑 ¡PONCHE! El lanzador retira por la vía del ponche a ${batterName}.`;
+    }
+    if (result === 'Walk') {
+      return `🚶 Base por bolas: ${batterName} negocia cuatro bolas y va a primera base.`;
+    }
+    if (result === 'Reached Error' || result === 'Error') {
+      return `⚠️ Pifia defensiva: ${batterName} se embasa por error del fildeador.${rbiTxt}`;
+    }
+    if (result === 'Sac Fly') {
+      return `✈️ Elevado de sacrificio: ${batterName} impulsa carrera en jugada de sacrificio.${rbiTxt}`;
+    }
+    return `🛑 Out registrado sobre el batazo de ${batterName}.${rbiTxt}`;
+  }
+
+  function executeReplayStep(idx) {
+    clearReplayTimeouts();
+    if (!replayState || !replayState.events) return;
+    const events = replayState.events;
+    if (!events.length) return;
+
+    const clampedIdx = Math.max(0, Math.min(events.length - 1, idx));
+    replayState.currentIndex = clampedIdx;
+
+    const g = replayState.game;
+    const pa = events[clampedIdx];
+    const maxOuts = Math.max(1, Number(g.outsPerInning) || 3);
+
+    // 1. Pre-calcular acumulados de carreras y hits hasta justo antes de esta jugada
+    let accAwayRuns = 0;
+    let accHomeRuns = 0;
+    let accAwayHits = 0;
+    let accHomeHits = 0;
+    let accOutsInHalf = 0;
+
+    for (let i = 0; i < clampedIdx; i++) {
+      const prevPa = events[i];
+      const prevRuns = Number(prevPa.earnedRuns) || (prevPa.result === 'Home Run' ? 1 : 0);
+      if (prevPa.half === 'away') {
+        accAwayRuns += prevRuns;
+        if (HIT_RESULTS.has(prevPa.result)) accAwayHits++;
+      } else {
+        accHomeRuns += prevRuns;
+        if (HIT_RESULTS.has(prevPa.result)) accHomeHits++;
+      }
+    }
+
+    // Contar outs en este medio inning antes de esta jugada
+    for (let i = 0; i < clampedIdx; i++) {
+      const prevPa = events[i];
+      if (prevPa.inning === pa.inning && prevPa.half === pa.half) {
+        const o = Number(prevPa.outs) || (prevPa.result.includes('Strikeout') || prevPa.result.includes('out') || prevPa.result === 'Flyout' ? 1 : 0);
+        accOutsInHalf = (accOutsInHalf + o) % maxOuts;
+      }
+    }
+
+    // Marcador Superior
+    $('#replayAwayScore').textContent = accAwayRuns;
+    $('#replayHomeScore').textContent = accHomeRuns;
+    $('#replayRheAwayR').textContent = accAwayRuns;
+    $('#replayRheAwayH').textContent = accAwayHits;
+    $('#replayRheHomeR').textContent = accHomeRuns;
+    $('#replayRheHomeH').textContent = accHomeHits;
+
+    const isAwayBatting = pa.half === 'away';
+    $('#replayAwayRoleTag').textContent = isAwayBatting ? 'BATEO' : 'DEFENSA';
+    $('#replayHomeRoleTag').textContent = isAwayBatting ? 'DEFENSA' : 'BATEO';
+
+    // Inning y Outs
+    $('#replayInningBadge').textContent = `INNING ${pa.inning} (${isAwayBatting ? 'ALTA ▲' : 'BAJA ▼'})`;
+    updateOutDots('replayOutDots', accOutsInHalf, maxOuts);
+
+    // Barra de progreso y slider
+    $('#replayProgressText').textContent = `Jugada ${clampedIdx + 1} de ${events.length}`;
+    $('#replayProgressInning').textContent = `Inning ${pa.inning}${isAwayBatting ? '▲' : '▼'} • ${accOutsInHalf} Out${accOutsInHalf !== 1 ? 's' : ''}`;
+    const slider = $('#replayProgressSlider');
+    if (slider) {
+      slider.value = Math.round((clampedIdx / (events.length - 1 || 1)) * 100);
+    }
+
+    // Auto-scroll PBP
+    $$('#replayPbpList .pbp-event-row').forEach((row, i) => {
+      row.classList.toggle('active', i === clampedIdx);
+    });
+    const activeRow = $(`#replayPbpList .pbp-event-row[data-replay-jump="${clampedIdx}"]`);
+    if (activeRow) activeRow.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+
+    // Resaltar chip de inning
+    $$('.btn-inn-chip').forEach(chip => {
+      chip.classList.toggle('active', Number(chip.dataset.inn) === Number(pa.inning));
+    });
+
+    // Identificar bateador y lanzador
+    const bp = db.players.find(x => x.id === pa.batter);
+    const pp = db.players.find(x => x.id === pa.pitcher);
+    const bName = bp?.name || playerName(pa.batter);
+    const pName = pp?.name || playerName(pa.pitcher);
+
+    // Matchup Bar
+    renderReplayMatchup(bp, pp, pa);
+
+    // Titular Narrativo Inicial
+    $('#replayHeadlineTag').textContent = `#${clampedIdx + 1} • INN ${pa.inning}${isAwayBatting ? '▲' : '▼'}`;
+    $('#replayHeadlineText').textContent = `${bName} al bate contra ${pName}...`;
+
+    // Renderizar defensivos del equipo defensor
+    const interveningPos = getFielderPositionForResult(pa.result);
+    renderStadiumDefense('replay', g, pa.half, null);
+
+    // Mostrar corredores antes de la jugada
+    renderStadiumDiamond('replay', pa.runnersBefore || { '1B': null, '2B': null, '3B': null }, pa.pitcher, pa.batter);
+    updateReplayRunnersPill(pa.runnersBefore);
+
+    // Ocultar overlays
+    $('#replayInningEndOverlay').style.display = 'none';
+    $('#replayGameOverOverlay').style.display = 'none';
+    $('#replayScorePopup').style.display = 'none';
+
+    // FASE 1: LANZAMIENTO (Pitcher -> Home)
+    const ball = $('#replayStadiumBall');
+    if (ball) {
+      ball.className = 'stadium-animated-ball pitching';
+      ball.style.display = 'block';
+    }
+    ReplayAudio.pitch();
+
+    // FASE 2: CONTACTO Y TRAYECTORIA (a los 750ms / speed)
+    queueReplayTimeout(() => {
+      // Activar defensor si interviene
+      if (interveningPos) {
+        const defNode = $(`#replayFielder${interveningPos}`);
+        if (defNode) defNode.classList.add('active-play');
+      }
+
+      // Sonido y animación del bateo/contacto
+      playOutcomeSoundAndSplash(pa);
+
+      // FASE 3: AVANCE DE CORREDORES Y CARRERAS (a los 1350ms / speed)
+      queueReplayTimeout(() => {
+        // Colocar corredores posteriores
+        renderStadiumDiamond('replay', pa.runnersAfter || { '1B': null, '2B': null, '3B': null }, pa.pitcher, null);
+        updateReplayRunnersPill(pa.runnersAfter);
+
+        // Contabilizar carreras de la jugada
+        const runsScored = Number(pa.earnedRuns) || (pa.result === 'Home Run' ? 1 : 0);
+        if (runsScored > 0) {
+          if (isAwayBatting) {
+            accAwayRuns += runsScored;
+            $('#replayAwayScore').textContent = accAwayRuns;
+            $('#replayRheAwayR').textContent = accAwayRuns;
+          } else {
+            accHomeRuns += runsScored;
+            $('#replayHomeScore').textContent = accHomeRuns;
+            $('#replayRheHomeR').textContent = accHomeRuns;
+          }
+          ReplayAudio.score();
+          showReplayScorePopup(`⭐ ¡+${runsScored} CARRERA${runsScored > 1 ? 'S' : ''}!`);
+        }
+
+        // Contabilizar outs de la jugada
+        const playOuts = Number(pa.outs) || (pa.result.includes('Strikeout') || pa.result.includes('out') || pa.result === 'Flyout' ? 1 : 0);
+        accOutsInHalf = Math.min(maxOuts, accOutsInHalf + playOuts);
+        updateOutDots('replayOutDots', accOutsInHalf, maxOuts);
+
+        // Actualizar titular narrativo con la resolución final
+        $('#replayHeadlineText').textContent = formatPlayNarrative(bName, pa.result, pa.rbi, runsScored);
+
+        // FASE 4: TRANSICIÓN Y CONTINUACIÓN AUTOMÁTICA (a los 2150ms / speed)
+        queueReplayTimeout(() => {
+          // Desactivar fildeador
+          if (interveningPos) {
+            const defNode = $(`#replayFielder${interveningPos}`);
+            if (defNode) defNode.classList.remove('active-play');
+          }
+
+          const isLastPlay = clampedIdx >= events.length - 1;
+          const nextPa = !isLastPlay ? events[clampedIdx + 1] : null;
+          const isHalfInningEnd = accOutsInHalf >= maxOuts || (nextPa && (nextPa.inning !== pa.inning || nextPa.half !== pa.half));
+
+          if (isLastPlay) {
+            // FINAL DEL PARTIDO COMPLETO
+            ReplayAudio.gameEnd();
+            showGameOverCelebration(g);
+            replayState.isPlaying = false;
+            $('#btnReplayPlayToggle').textContent = '▶ Reproducir';
+            return;
+          }
+
+          if (isHalfInningEnd) {
+            // TRANSICIÓN DE INNING AUTOMÁTICA
+            ReplayAudio.inningEnd();
+            showInningEndTransition(pa.inning, isAwayBatting, accAwayRuns, accHomeRuns, nextPa);
+
+            queueReplayTimeout(() => {
+              $('#replayInningEndOverlay').style.display = 'none';
+              if (replayState.isPlaying) {
+                executeReplayStep(clampedIdx + 1);
+              }
+            }, 1800);
+          } else {
+            // CONTINUAR INMEDIATAMENTE AL SIGUIENTE BATEADOR
+            if (replayState.isPlaying) {
+              executeReplayStep(clampedIdx + 1);
+            }
+          }
+        }, 850);
+      }, 600);
+    }, 750);
+  }
+
+  function playOutcomeSoundAndSplash(pa) {
+    const splash = $('#replayStadiumSplash');
+    const ball = $('#replayStadiumBall');
+    const action = pa.result || '';
+    const rbi = pa.rbi || 0;
+    const isHR = action === 'Home Run';
+
+    let text = 'JUGADA';
+    let typeClass = 'single';
+
+    if (isHR) {
+      text = `🔥 HOME RUN! +${rbi || 1} RBI 🔥`;
+      typeClass = 'hr';
+      ReplayAudio.batCrack();
+      setTimeout(() => ReplayAudio.homeRun(), 250);
+    } else if (action === 'Triple') {
+      text = '⚡ TRIPLE (3B)!';
+      typeClass = 'triple';
+      ReplayAudio.batCrack();
+    } else if (action === 'Double') {
+      text = '🥈 DOBLE (2B)!';
+      typeClass = 'double';
+      ReplayAudio.batCrack();
+    } else if (action === 'Single') {
+      text = '⚾ HIT!';
+      typeClass = 'single';
+      ReplayAudio.batCrack();
+    } else if (action.includes('Strikeout')) {
+      text = '❌ PONCHE (K)!';
+      typeClass = 'strikeout';
+      ReplayAudio.strike();
+      setTimeout(() => ReplayAudio.out(), 180);
+    } else if (action.includes('out') || action === 'Flyout') {
+      text = '🛑 OUT!';
+      typeClass = action === 'Flyout' ? 'flyout' : 'groundout';
+      ReplayAudio.batCrack();
+      setTimeout(() => ReplayAudio.out(), 220);
+    } else if (action === 'Walk') {
+      text = '🚶 BASE POR BOLAS';
+      typeClass = 'single';
+      ReplayAudio.pitch();
+    } else if (action === 'Reached Error' || action === 'Error') {
+      text = '⚠️ ERROR DEFENSIVO';
+      typeClass = 'groundout';
+      ReplayAudio.out();
+    } else if (action === 'Sac Fly') {
+      text = '✈️ SACRIFICIO';
+      typeClass = 'flyout';
+      ReplayAudio.batCrack();
+    }
+
+    if (splash) {
+      splash.style.display = 'flex';
+      splash.innerHTML = `<div class="splash-text">${text}</div>`;
+      splash.className = `stadium-play-splash active ${typeClass}`;
+    }
+
+    if (ball) {
+      ball.className = `stadium-animated-ball active fly-${typeClass}`;
+      ball.style.display = 'block';
+    }
+
+    queueReplayTimeout(() => {
+      if (splash) {
+        splash.classList.remove('active');
+        splash.style.display = 'none';
+      }
+      if (ball) {
+        ball.className = 'stadium-animated-ball';
+        ball.style.display = 'none';
+      }
+    }, 1200);
+  }
+
+  function showReplayScorePopup(text) {
+    const p = $('#replayScorePopup');
+    if (!p) return;
+    p.textContent = text;
+    p.style.display = 'block';
+    setTimeout(() => {
+      p.style.display = 'none';
+    }, 1200);
+  }
+
+  function showInningEndTransition(inning, isAwayBatting, awayRuns, homeRuns, nextPa) {
+    const overlay = $('#replayInningEndOverlay');
+    if (!overlay) return;
+    const aName = teamName(replayState.game.away);
+    const hName = teamName(replayState.game.home);
+    const halfTxt = isAwayBatting ? 'ALTA ▲' : 'BAJA ▼';
+    $('#replayInningEndTitle').textContent = `🔔 FIN DEL INNING ${inning} (${halfTxt})`;
+    $('#replayInningEndScore').textContent = `${aName} ${awayRuns} — ${homeRuns} ${hName}`;
+    if (nextPa) {
+      const nextHalfTxt = nextPa.half === 'away' ? 'Alta ▲' : 'Baja ▼';
+      $('#replayInningEndNext').textContent = `Siguiente: Inning ${nextPa.inning} (${nextHalfTxt}) al bate ${teamName(nextPa.half === 'away' ? replayState.game.away : replayState.game.home)} ➔`;
+    } else {
+      $('#replayInningEndNext').textContent = 'Preparando siguiente turno...';
+    }
+    overlay.style.display = 'flex';
+  }
+
+  function showGameOverCelebration(g) {
+    const overlay = $('#replayGameOverOverlay');
+    if (!overlay) return;
     const aName = teamName(g.away);
     const hName = teamName(g.home);
-    $('#replayGameTitle').textContent = `${aName} ${g.awayScore} — ${g.homeScore} ${hName}`;
-    $('#replayGameMeta').textContent = `${seasonName(g.season)} • ${fmtDate(g.date)} • ${
-      g.stadium || 'Estadio Oficial'
-    }`;
+    const winnerId = g.awayScore > g.homeScore ? g.away : g.homeScore > g.awayScore ? g.home : null;
+    const winnerTxt = winnerId ? `🏆 Ganador: ${teamName(winnerId)}` : 'Empate oficial';
+
+    $('#replayGameOverScore').textContent = `${aName} ${g.awayScore} — ${g.homeScore} ${hName}`;
+    $('#replayGameOverWinner').textContent = winnerTxt;
+
+    const mvpObj = calculateGameMVP(g);
+    const mvpArea = $('#replayMvpArea');
+    if (mvpArea && mvpObj && mvpObj.player) {
+      const p = mvpObj.player;
+      const avatar = p.photo
+        ? `<img src="${p.photo}" class="mvp-photo" style="width:50px;height:50px;border-radius:50%;border:2px solid var(--yellow);object-fit:cover" alt="${esc(p.name)}">`
+        : `<div class="mvp-fallback-avatar" style="width:50px;height:50px;border-radius:50%;background:#092e1b;border:2px solid var(--yellow);display:flex;align-items:center;justify-content:center;font-size:22px;color:#fff">${(p.name || 'J')[0]}</div>`;
+      mvpArea.innerHTML = `
+        <div style="display:flex;align-items:center;gap:12px;background:#051e12;border:1px solid var(--yellow);padding:8px 14px;border-radius:10px">
+          ${avatar}
+          <div style="text-align:left">
+            <span style="font-size:10px;font-weight:900;color:var(--yellow);letter-spacing:0.8px">⭐ MVP DEL PARTIDO</span>
+            <div style="font-size:15px;font-weight:900;color:#fff">${esc(p.name)} (#${esc(p.number || '—')})</div>
+            <div style="font-size:11px;color:#4ade80;font-weight:700">${esc(mvpObj.statLine || '')}</div>
+          </div>
+        </div>
+      `;
+    }
+
+    overlay.style.display = 'flex';
+  }
+
+  function renderReplayMatchup(bp, pp, pa) {
+    const bPhoto = $('#replayBatterPhoto');
+    const pPhoto = $('#replayPitcherPhoto');
+    if (bPhoto) {
+      bPhoto.innerHTML = bp?.photo
+        ? `<img src="${bp.photo}" alt="${esc(bp.name)}" />`
+        : '👤';
+    }
+    if (pPhoto) {
+      pPhoto.innerHTML = pp?.photo
+        ? `<img src="${pp.photo}" alt="${esc(pp.name)}" />`
+        : '⚾';
+    }
+    $('#replayBatterName').textContent = bp?.name || playerName(pa.batter);
+    $('#replayPitcherName').textContent = pp?.name || playerName(pa.pitcher);
+
+    const batTeamId = pa.half === 'away' ? replayState.game.away : replayState.game.home;
+    const defTeamId = pa.half === 'away' ? replayState.game.home : replayState.game.away;
+    $('#replayBatterMeta').textContent = `${teamName(batTeamId)} • #${esc(bp?.number || '—')}`;
+    $('#replayPitcherMeta').textContent = `${teamName(defTeamId)} • #${esc(pp?.number || '—')}`;
+  }
+
+  function updateReplayRunnersPill(runners) {
+    const pill = $('#replayRunnersPill');
+    if (!pill) return;
+    const r = runners || {};
+    const b1 = Boolean(r['1B']);
+    const b2 = Boolean(r['2B']);
+    const b3 = Boolean(r['3B']);
+    if (b1 && b2 && b3) pill.textContent = 'Bases Llenas 🔥';
+    else if (b1 && b2) pill.textContent = '1B y 2B';
+    else if (b1 && b3) pill.textContent = '1B y 3B';
+    else if (b2 && b3) pill.textContent = '2B y 3B';
+    else if (b3) pill.textContent = 'Corredor en 3B';
+    else if (b2) pill.textContent = 'Corredor en 2B';
+    else if (b1) pill.textContent = 'Corredor en 1B';
+    else pill.textContent = 'Bases Limpias';
+  }
+
+  function renderReplayPBPList(g, events) {
+    const list = $('#replayPbpList');
+    if (!list) return;
+    list.innerHTML = events.length
+      ? events.map((pa, idx) => {
+          const bp = db.players.find(x => x.id === pa.batter);
+          const avatar = bp?.photo
+            ? `<img src="${bp.photo}" class="pbp-thumb-avatar" style="width:20px;height:20px;border-radius:50%;object-fit:cover" alt="">`
+            : `<div class="pbp-thumb-fallback" style="width:20px;height:20px;border-radius:50%;background:#092e1b;display:flex;align-items:center;justify-content:center;font-size:10px">${(bp?.name || 'J')[0]}</div>`;
+          return `
+            <div class="pbp-event-row ${idx === 0 ? 'active' : ''}" data-replay-jump="${idx}">
+              <div style="display:flex;align-items:center;gap:6px">
+                ${avatar}
+                <span><b>#${idx + 1} • Inn ${pa.inning}${pa.half === 'away' ? '▲' : '▼'}:</b> ${esc(bp?.name || playerName(pa.batter))}</span>
+                <span class="action-tag ${pa.result.toLowerCase().replace(/\s+/g, '-')}">${esc(resultLabel(pa.result))}</span>
+              </div>
+              <span style="color:${pa.rbi > 0 ? '#4ade80' : 'var(--muted)'};font-size:11px;font-weight:800">
+                ${pa.rbi > 0 ? `+${pa.rbi} RBI` : ''}
+              </span>
+            </div>`;
+        }).join('')
+      : '<div class="empty">Sin jugadas en este partido.</div>';
+
+    $$('#replayPbpList [data-replay-jump]').forEach(row => {
+      row.onclick = () => {
+        executeReplayStep(Number(row.dataset.replayJump));
+      };
+    });
+    const cntEl = $('#replayPbpCount');
+    if (cntEl) cntEl.textContent = events.length;
+  }
+
+  function renderReplayInningsBar(events) {
+    const bar = $('#replayInningsBar');
+    if (!bar) return;
+    const uniqueInns = [...new Set(events.map(e => Number(e.inning) || 1))].sort((a, b) => a - b);
+    if (!uniqueInns.length) {
+      bar.innerHTML = '';
+      return;
+    }
+    bar.innerHTML = uniqueInns.map(inn => {
+      const firstIdx = events.findIndex(e => Number(e.inning) === inn);
+      return `<button type="button" class="btn-inn-chip ${inn === 1 ? 'active' : ''}" data-inn="${inn}" data-jump-idx="${firstIdx}">Inn ${inn}</button>`;
+    }).join('');
+
+    $$('#replayInningsBar .btn-inn-chip').forEach(chip => {
+      chip.onclick = () => {
+        const targetIdx = Number(chip.dataset.jumpIdx);
+        if (targetIdx >= 0) executeReplayStep(targetIdx);
+      };
+    });
   }
 
   function renderReplayLinescore(g) {
@@ -3640,217 +4398,22 @@
     `;
   }
 
-  function renderReplayPBP(g) {
-    const list = $('#replayPbpList');
-    if (!list) return;
-    const events = g.batLog || [];
-    list.innerHTML = events.length
-      ? events
-          .map((pa, idx) => {
-            const bp = db.players.find(x => x.id === pa.batter);
-            const avatar = bp?.photo
-              ? `<img src="${bp.photo}" class="pbp-thumb-avatar" alt="">`
-              : `<div class="pbp-thumb-fallback">${(bp?.name || 'J')[0]}</div>`;
-            return `
-              <div class="live-log-row pbp-event-row ${idx === replayState.currentIndex ? 'active' : ''}" data-replay-jump="${idx}">
-                <div style="display:flex;align-items:center;gap:8px">
-                  ${avatar}
-                  <div>
-                    <b>#${idx + 1} • Inn ${pa.inning}${pa.half === 'away' ? '▲' : '▼'}:</b> 
-                    <span class="player-link" data-player-id="${pa.batter}">${esc(playerName(pa.batter))}</span> 
-                    <span class="action-tag ${pa.result.toLowerCase().replace(/\s+/g, '-')}">${esc(resultLabel(pa.result))}</span>
-                  </div>
-                </div>
-                <span style="color:${pa.rbi > 0 ? '#4ade80' : 'var(--muted)'};font-size:12px">
-                  ${pa.rbi > 0 ? `+${pa.rbi} RBI` : ''}
-                </span>
-              </div>`;
-          })
-          .join('')
-      : '<div class="empty">Sin jugadas registradas en este partido.</div>';
-
-    $$('#replayPbpList [data-replay-jump]').forEach(btn => {
-      btn.onclick = () => setReplayEventIndex(Number(btn.dataset.replayJump));
-    });
-  }
-
-  function renderReplayMVP(g) {
-    const area = $('#replayMvpArea');
-    if (!area) return;
-    const mvpObj = calculateGameMVP(g);
-    if (!mvpObj || !mvpObj.player) {
-      area.innerHTML = '<div class="muted">No hay datos suficientes para calcular MVP.</div>';
-      return;
-    }
-    const p = mvpObj.player;
-    const avatar = p.photo
-      ? `<img src="${p.photo}" class="mvp-photo" alt="${esc(p.name)}" />`
-      : `<div class="mvp-fallback-avatar">${(p.name || 'J')[0]}</div>`;
-
-    area.innerHTML = `
-      <div class="replay-mvp-card">
-        ${avatar}
-        <div>
-          <span class="mvp-badge">🏆 MVP DEL PARTIDO</span>
-          <h3 style="margin:4px 0;color:var(--yellow);font-size:18px">
-            <span class="player-link" data-player-id="${p.id}">${esc(p.name)}</span>
-          </h3>
-          <div class="muted" style="font-size:12px">${esc(teamName(p.team))} • #${esc(p.number || '—')}</div>
-          <div style="margin-top:6px;font-weight:700;color:#fff;font-size:13px">${esc(mvpObj.statLine)}</div>
-        </div>
-      </div>
-    `;
-  }
-
-  function renderReplayTimeline() {
-    const track = $('#replayTimelineTrack');
-    const events = replayState.events;
-
-    track.innerHTML = events.length
-      ? events
-          .map((pa, idx) => {
-            const bp = db.players.find(x => x.id === pa.batter);
-            const avatar = bp?.photo
-              ? `<img src="${bp.photo}" class="pbp-thumb-avatar" style="width:20px;height:20px" alt="">`
-              : `<span style="font-size:10px">⚾</span>`;
-            return `
-              <div class="timeline-node-chip ${idx === 0 ? 'active' : ''}" data-replay-idx="${idx}">
-                <span>#${idx + 1}</span>
-                ${avatar}
-                <b>Inn ${pa.inning}${pa.half === 'away' ? '▲' : '▼'}</b>
-                <span>${esc(resultLabel(pa.result))}</span>
-              </div>`;
-          })
-          .join('')
-      : '<div class="empty">Sin jugadas en este partido.</div>';
-
-    $$('#replayTimelineTrack .timeline-node-chip').forEach(chip => {
-      chip.onclick = () => setReplayEventIndex(Number(chip.dataset.replayIdx));
-    });
-  }
-
-  function setReplayEventIndex(idx) {
-    const events = replayState.events;
-    if (!events.length) {
-      if ($('#replayEventCountBadge')) $('#replayEventCountBadge').textContent = 'Jugada 0 de 0';
-      if ($('#replayNarrativeText')) $('#replayNarrativeText').textContent = 'Sin jugadas registradas en este partido.';
-      renderStadiumDiamond('replay', { '1B': null, '2B': null, '3B': null });
-      return;
-    }
-
-    const clampedIdx = Math.max(0, Math.min(events.length - 1, idx));
-    replayState.currentIndex = clampedIdx;
-
-    if ($('#replayEventCountBadge')) {
-      $('#replayEventCountBadge').textContent = `Jugada ${clampedIdx + 1} de ${events.length}`;
-    }
-
-    $$('#replayTimelineTrack .timeline-node-chip').forEach((c, i) => {
-      c.classList.toggle('active', i === clampedIdx);
-    });
-    $$('#replayPbpList .pbp-event-row').forEach((c, i) => {
-      c.classList.toggle('active', i === clampedIdx);
-    });
-
-    const pa = events[clampedIdx];
-    const bName = playerName(pa.batter);
-    const pName = playerName(pa.pitcher);
-    const bp = db.players.find(x => x.id === pa.batter);
-    const pp = db.players.find(x => x.id === pa.pitcher);
-
-    // Determinar fildeador interviniente para animar (Requisitos 1 y 5)
-    let interveningPos = null;
-    if (pa.result === 'Single') interveningPos = 'LF';
-    else if (pa.result === 'Double') interveningPos = 'CF';
-    else if (pa.result === 'Triple') interveningPos = 'RF';
-    else if (pa.result === 'Home Run') interveningPos = 'CF';
-    else if (pa.result.includes('Strikeout')) interveningPos = 'C';
-    else if (pa.result.includes('out')) interveningPos = 'SS';
-    else if (pa.result === 'Flyout') interveningPos = 'CF';
-    else if (pa.result === 'Reached Error' || pa.result === 'Error') interveningPos = '3B';
-
-    // Renderizar defensivos reales del equipo defensor (Requisitos 1 y 5)
-    renderStadiumDefense('replay', replayState.game, pa.half, interveningPos);
-
-    // Actualizar Banners de Narrativa
-    if ($('#replayNarrativeInn')) {
-      $('#replayNarrativeInn').textContent = `Inn ${pa.inning}${pa.half === 'away' ? '▲' : '▼'}`;
-    }
-    if ($('#replayNarrativeText')) {
-      $('#replayNarrativeText').innerHTML = `
-        <span class="player-link" data-player-id="${pa.batter}"><b>${esc(bName)}</b></span> al bate vs 
-        <span class="player-link" data-player-id="${pa.pitcher}"><b>${esc(pName)}</b></span> ➔ 
-        <span style="color:var(--yellow);font-weight:900">${esc(resultLabel(pa.result))}</span>
-        ${pa.rbi > 0 ? ` <span style="color:#4ade80;font-weight:800">(+${pa.rbi} RBI)</span>` : ''}
-      `;
-    }
-
-    // Actualizar Tarjeta de Detalle de la Jugada
-    const detailBox = $('#replayCurrentPlayDetail');
-    if (detailBox) {
-      const defTeamId = pa.half === 'away' ? replayState.game.home : replayState.game.away;
-      const batTeamId = pa.half === 'away' ? replayState.game.away : replayState.game.home;
-      const fPlayer = interveningPos ? db.players.find(x => x.id === (pa.half === 'away' ? replayState.game.homePositions?.[interveningPos] : replayState.game.awayPositions?.[interveningPos])) : null;
-
-      detailBox.innerHTML = `
-        <div class="play-detail-actors">
-          <div class="actor-mini-card player-link" data-player-id="${pa.batter}">
-            ${bp?.photo ? `<img src="${bp.photo}" class="actor-mini-avatar" alt="">` : '<div class="fielder-avatar-fallback">👤</div>'}
-            <div>
-              <small class="muted" style="display:block;font-size:10px">BATEADOR (${teamName(batTeamId)})</small>
-              <b>${esc(bName)}</b>
-            </div>
-          </div>
-          <div class="actor-mini-card player-link" data-player-id="${pa.pitcher}">
-            ${pp?.photo ? `<img src="${pp.photo}" class="actor-mini-avatar" alt="">` : '<div class="fielder-avatar-fallback">⚾</div>'}
-            <div>
-              <small class="muted" style="display:block;font-size:10px">LANZADOR (${teamName(defTeamId)})</small>
-              <b>${esc(pName)}</b>
-            </div>
-          </div>
-        </div>
-        ${fPlayer ? `
-          <div style="font-size:12px;color:rgba(255,255,255,0.8);background:#061c10;padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.06)">
-            🛡️ <b>Defensa en jugada:</b> <span class="player-link" data-player-id="${fPlayer.id}">${esc(fPlayer.name)}</span> (${interveningPos})
-          </div>
-        ` : ''}
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;font-size:13px">
-          <span><b>Resultado:</b> <span class="action-tag ${pa.result.toLowerCase().replace(/\s+/g, '-')}">${esc(resultLabel(pa.result))}</span></span>
-          <span style="color:var(--yellow);font-weight:800">${pa.rbi > 0 ? `+${pa.rbi} Carreras impulsadas` : ''}</span>
-        </div>
-      `;
-    }
-
-    // 1. Mostrar corredores antes de la jugada
-    renderStadiumDiamond('replay', pa.runnersBefore || { '1B': null, '2B': null, '3B': null }, pa.pitcher, pa.batter);
-
-    // 2. Animación del lanzamiento: Lanzador -> Home
-    const ball = $('#replayStadiumBall');
-    if (ball) {
-      ball.className = 'stadium-animated-ball pitching';
-      ball.style.display = 'block';
-    }
-
-    // 3. Contacto y trayectoria
-    setTimeout(() => {
-      triggerStadiumAnimation('replay', pa.result, pa.rbi, pa.result === 'Home Run');
-    }, 450);
-
-    // 4. Avance de corredores en bases
-    setTimeout(() => {
-      renderStadiumDiamond('replay', pa.runnersAfter || { '1B': null, '2B': null, '3B': null }, pa.pitcher, null);
-    }, 900);
+  function showNoEventsReplay(g) {
+    $('#replayHeadlineText').textContent = 'Este partido no cuenta con jugadas registradas en el BAT LOG.';
+    $('#replayRunnersPill').textContent = 'Sin datos';
+    renderStadiumDiamond('replay', { '1B': null, '2B': null, '3B': null });
   }
 
   function gameStatus(g) {
     if (g.status === 'LIVE' || g.status === 'En curso') return '🔴 EN VIVO';
-    return (g.batLog || []).length ? 'FINALIZADO' : 'PROGRAMADO';
+    return (g.batLog || []).length || g.status === 'FINAL' || g.status === 'Finalizado' ? 'FINALIZADO' : 'PROGRAMADO';
   }
 
   function gameHTML(g) {
     const sr = g.series ? getSeries(g.series) : null;
     const paCount = (g.batLog || []).length;
     const isLive = g.status === 'LIVE' || g.status === 'En curso';
+    const isFinal = g.status === 'FINAL' || g.status === 'Finalizado' || (!isLive && paCount > 0);
     return `
       <div class="gamecard ${isLive ? 'gamecard-live' : ''}">
         <div class="head">
@@ -3866,13 +4429,21 @@
           Juego ${esc(g.gameNumber || '—')} ${g.stadium ? '• ' + esc(g.stadium) : ''}
         </div>
         <div class="head" style="margin-top:12px">
-          <span class="tag ${isLive ? 'tag-live' : ''}">${gameStatus(g)}</span>
+          <span class="tag ${isLive ? 'tag-live' : isFinal ? 'tag-final' : ''}">${gameStatus(g)}</span>
           <span class="muted">${paCount} jugadas registradas</span>
         </div>
         <div class="actions" style="margin-top:11px">
-          <button class="btn yellow" data-live-game="${g.id}">⚡ Consola en Vivo</button>
-          <button class="btn blue" data-replay-game="${g.id}">🎬 Ver Replay 2D</button>
-          <button class="btn" data-score-game="${g.id}">Libro BAT LOG</button>
+          ${isFinal ? `
+            <button class="btn yellow btn-full-replay" data-replay-game="${g.id}" style="font-weight:900;letter-spacing:0.5px">▶ VER PARTIDO COMPLETO 2D</button>
+            <button class="btn" data-score-game="${g.id}">📋 Box Score / BAT LOG</button>
+            <button class="btn admin-only" data-live-game="${g.id}" title="Reanudar o corregir partido en vivo">⚡ Reabrir Anotación</button>
+          ` : isLive ? `
+            <button class="btn yellow" data-live-game="${g.id}">⚡ Consola en Vivo</button>
+            <button class="btn" data-score-game="${g.id}">Libro BAT LOG</button>
+          ` : `
+            <button class="btn yellow" data-live-game="${g.id}">⚡ Iniciar Partido en Vivo</button>
+            <button class="btn" data-score-game="${g.id}">Libro BAT LOG</button>
+          `}
           <button class="btn admin-only" data-edit-game="${g.id}">Editar</button>
           <button class="btn danger admin-only" data-del-game="${g.id}">Eliminar</button>
         </div>
@@ -5658,6 +6229,7 @@
           <div class="muted">${esc(seasonName(g.season))} • Juego ${esc(g.gameNumber || '—')} • ${esc(g.date)}</div>
         </div>
         <div class="actions">
+          ${(g.batLog || []).length ? `<button class="btn yellow btn-full-replay" data-replay-game="${g.id}" style="font-weight:900">▶ VER PARTIDO COMPLETO 2D</button>` : ''}
           <button class="btn yellow admin-only" data-add-pa="${g.id}">+ Registrar PA</button>
           <button class="btn blue" data-open-face>⚔ Cara a cara</button>
           <button class="btn close">Cerrar</button>
@@ -6884,70 +7456,19 @@
     // CONTROLES DE REPLAY 2D
     if ($('#btnCloseReplayModal')) {
       $('#btnCloseReplayModal').addEventListener('click', () => {
-        if (replayState.intervalId) {
-          clearInterval(replayState.intervalId);
-          replayState.isPlaying = false;
-        }
-        $('#gameReplayModal').classList.remove('open');
+        clearReplayTimeouts();
+        if (replayState) replayState.isPlaying = false;
+        $('#gameReplayModal')?.classList.remove('open');
       });
     }
 
-    if ($('#btnReplayPrev')) {
-      $('#btnReplayPrev').addEventListener('click', () => {
-        setReplayEventIndex(replayState.currentIndex - 1);
-      });
-    }
-
-    if ($('#btnReplayNext')) {
-      $('#btnReplayNext').addEventListener('click', () => {
-        setReplayEventIndex(replayState.currentIndex + 1);
-      });
-    }
-
-    if ($('#btnReplayPlayToggle')) {
-      $('#btnReplayPlayToggle').addEventListener('click', () => {
-        const btn = $('#btnReplayPlayToggle');
-        if (replayState.isPlaying) {
-          clearInterval(replayState.intervalId);
-          replayState.isPlaying = false;
-          btn.textContent = '▶ Reproducir';
-        } else {
-          replayState.isPlaying = true;
-          btn.textContent = '⏸ Pausar';
-          if (replayState.currentIndex >= replayState.events.length - 1) {
-            setReplayEventIndex(0);
-          }
-          replayState.intervalId = setInterval(() => {
-            if (replayState.currentIndex < replayState.events.length - 1) {
-              setReplayEventIndex(replayState.currentIndex + 1);
-            } else {
-              clearInterval(replayState.intervalId);
-              replayState.isPlaying = false;
-              btn.textContent = '▶ Reproducir';
-            }
-          }, 2000 / (replayState.speed || 1));
-        }
-      });
-    }
-
-    $$('.btn-speed-opt').forEach(btn => {
-      btn.addEventListener('click', () => {
-        $$('.btn-speed-opt').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        replayState.speed = Number(btn.dataset.speed) || 1;
-        if (replayState.isPlaying) {
-          clearInterval(replayState.intervalId);
-          replayState.intervalId = setInterval(() => {
-            if (replayState.currentIndex < replayState.events.length - 1) {
-              setReplayEventIndex(replayState.currentIndex + 1);
-            } else {
-              clearInterval(replayState.intervalId);
-              replayState.isPlaying = false;
-              $('#btnReplayPlayToggle').textContent = '▶ Reproducir';
-            }
-          }, 2000 / replayState.speed);
-        }
-      });
+    // Delegación universal para abrir el partido 2D desde cualquier botón
+    document.addEventListener('click', e => {
+      const replayBtn = e.target.closest('[data-replay-game]');
+      if (replayBtn) {
+        e.preventDefault();
+        openGameReplay(replayBtn.dataset.replayGame);
+      }
     });
 
     if ($('#btnResumeActiveGame')) {
@@ -7269,6 +7790,8 @@
     confirmLivePlay,
     advanceToNextInning,
     finishLiveGame,
+    openGameReplay,
+    getReplayState: () => replayState,
     getLiveGameState: () => liveGameState,
     getDb: () => db,
     getFirebaseAdminCredentials,

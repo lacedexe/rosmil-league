@@ -3804,26 +3804,432 @@ tr:hover td {
   padding: 0 !important;
   margin: 0 !important;
   background: #020b06 !important;
-  z-index: 1000 !important;
-  display: flex !important;
-  align-items: stretch !important;
-  justify-content: stretch !important;
+  z-index: 9999 !important;
+  display: block !important;
   overflow: hidden !important;
 }
 
 #gameReplayModal .replay-modal-box {
+  position: absolute !important;
+  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
   width: 100vw !important;
   height: 100vh !important;
   max-width: 100vw !important;
   max-height: 100vh !important;
   border-radius: 0 !important;
   border: none !important;
+  box-shadow: none !important;
   margin: 0 !important;
-  padding: 12px 20px !important;
+  padding: 6px 14px !important;
   box-sizing: border-box !important;
   display: flex !important;
   flex-direction: column !important;
+  justify-content: space-between !important;
+  overflow: hidden !important;
+  background: radial-gradient(circle at 50% 15%, #072617 0%, #03120a 60%, #010804 100%) !important;
+}
+
+/* Marcador Superior Oficial del Replay */
+.replay-scoreboard-bar {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  background: radial-gradient(circle at 50% 50%, #0a2e1c 0%, #05190f 100%) !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 8px !important;
+  padding: 4px 14px !important;
+  margin: 0 0 4px 0 !important;
+  flex-shrink: 0 !important;
+  box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.5) !important;
+}
+
+.replay-team {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  flex: 1 !important;
+}
+
+.replay-team.home {
+  justify-content: flex-end !important;
+  text-align: right !important;
+}
+
+.replay-team-flag {
+  width: 32px !important;
+  height: 32px !important;
+  background: var(--panel2) !important;
+  border: 1px solid var(--panel-border) !important;
+  border-radius: 50% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 16px !important;
+  overflow: hidden !important;
+}
+
+.replay-team-flag img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+
+.replay-team-name {
+  font-size: 14px !important;
+  font-weight: 800 !important;
+  color: var(--text-white) !important;
+}
+
+.replay-tag {
+  display: inline-block !important;
+  font-size: 9px !important;
+  font-weight: 800 !important;
+  padding: 1px 5px !important;
+  border-radius: 3px !important;
+  background: rgba(250, 204, 21, 0.15) !important;
+  color: var(--yellow) !important;
+  margin-top: 1px !important;
+}
+
+.replay-score-num {
+  font-size: 28px !important;
+  font-weight: 900 !important;
+  color: #fff !important;
+  min-width: 34px !important;
+  text-align: center !important;
+  font-family: 'Inter', monospace !important;
+  text-shadow: 0 0 12px rgba(255, 255, 255, 0.5) !important;
+}
+
+.replay-center-status {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  padding: 0 10px !important;
+}
+
+.replay-inning-badge {
+  font-size: 10px !important;
+  font-weight: 900 !important;
+  color: var(--yellow) !important;
+  background: #081e13 !important;
+  padding: 2px 8px !important;
+  border-radius: 999px !important;
+  border: 1px solid var(--yellow-border) !important;
+  margin-bottom: 2px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+}
+
+.replay-outs-display {
+  display: flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  margin-bottom: 2px !important;
+}
+
+.replay-outs-label {
+  font-size: 9px !important;
+  font-weight: 800 !important;
+  color: var(--muted) !important;
+}
+
+.replay-rhe-box {
+  margin-bottom: 2px !important;
+}
+
+.replay-top-tools {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  margin-left: 14px !important;
+}
+
+/* Grid del Teatro Replay 2D */
+.replay-theater-grid {
+  display: grid !important;
+  grid-template-columns: minmax(320px, 440px) minmax(360px, 1fr) !important;
+  gap: 12px !important;
+  flex: 1 !important;
+  min-height: 0 !important;
+  margin: 0 0 4px 0 !important;
+  overflow: hidden !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.replay-stadium-card {
+  background: #04140b !important;
+  border: 1px solid var(--panel-border) !important;
+  border-radius: 10px !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  position: relative !important;
+}
+
+.replay-telecast-col {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  justify-content: space-between !important;
+  overflow: hidden !important;
+  min-width: 0 !important;
+  gap: 4px !important;
+}
+
+/* Titular Narrativo */
+.replay-headline-card {
+  background: linear-gradient(135deg, #072618 0%, #03140c 100%) !important;
+  border: 1px solid var(--yellow) !important;
+  border-radius: 8px !important;
+  padding: 5px 10px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  flex-shrink: 0 !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4) !important;
+}
+
+.headline-tag {
+  background: var(--yellow) !important;
+  color: #03120a !important;
+  font-size: 10px !important;
+  font-weight: 900 !important;
+  padding: 2px 6px !important;
+  border-radius: 4px !important;
+  letter-spacing: 0.5px !important;
+  flex-shrink: 0 !important;
+}
+
+.headline-body {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  color: #fff !important;
+  line-height: 1.3 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  flex: 1 !important;
+}
+
+/* Controles de Reproducción y Velocidad */
+.replay-controls-cluster {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 6px !important;
+  background: #082215 !important;
+  border: 1px solid var(--panel-border) !important;
+  border-radius: 8px !important;
+  padding: 4px 8px !important;
+  flex-shrink: 0 !important;
+}
+
+.replay-playback-buttons {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+
+.btn-ctrl {
+  padding: 4px 10px !important;
+  font-size: 11px !important;
+  font-weight: 800 !important;
+  border-radius: 6px !important;
+  background: #05160d !important;
+  border: 1px solid var(--panel-border) !important;
+  color: #fff !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+}
+
+.btn-ctrl:hover {
+  border-color: var(--yellow) !important;
+  color: var(--yellow) !important;
+}
+
+.btn-play-main {
+  background: var(--yellow) !important;
+  color: #03120a !important;
+  font-weight: 900 !important;
+  padding: 5px 14px !important;
+  border-color: var(--yellow) !important;
+}
+
+.speed-selector {
+  display: flex !important;
+  align-items: center !important;
+  gap: 3px !important;
+}
+
+.speed-btn {
+  padding: 2px 6px !important;
+  font-size: 10px !important;
+  font-weight: 800 !important;
+  border-radius: 4px !important;
+  background: #03120a !important;
+  border: 1px solid var(--panel-border) !important;
+  color: var(--muted) !important;
+  cursor: pointer !important;
+}
+
+.speed-btn.active {
+  background: var(--yellow) !important;
+  color: #03120a !important;
+  border-color: var(--yellow) !important;
+}
+
+/* Barra de Progreso del Partido */
+.replay-progress-wrap {
+  background: #05190f !important;
+  border: 1px solid var(--panel-border) !important;
+  border-radius: 6px !important;
+  padding: 3px 8px !important;
+  flex-shrink: 0 !important;
+}
+
+.progress-labels {
+  display: flex !important;
+  justify-content: space-between !important;
+  font-size: 9px !important;
+  font-weight: 800 !important;
+  color: var(--yellow) !important;
+  margin-bottom: 2px !important;
+}
+
+.replay-progress-slider {
+  width: 100% !important;
+  height: 4px !important;
+  border-radius: 2px !important;
+  accent-color: var(--yellow) !important;
+  cursor: pointer !important;
+  margin: 0 !important;
+}
+
+/* Botones de Salto por Entrada */
+.replay-innings-bar {
+  display: flex !important;
+  gap: 4px !important;
+  overflow-x: auto !important;
+  flex-shrink: 0 !important;
+  padding: 1px 0 !important;
+}
+
+.btn-inn-chip {
+  padding: 2px 7px !important;
+  font-size: 9px !important;
+  font-weight: 800 !important;
+  border-radius: 4px !important;
+  background: #082416 !important;
+  border: 1px solid var(--panel-border) !important;
+  color: var(--muted) !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  white-space: nowrap !important;
+}
+
+.btn-inn-chip:hover {
+  color: #fff !important;
+  border-color: var(--yellow) !important;
+}
+
+.btn-inn-chip.active {
+  background: var(--yellow) !important;
+  color: #03120a !important;
+  border-color: var(--yellow) !important;
+}
+
+/* Bandeja de Play-by-Play Sincronizado */
+.replay-pbp-tray {
+  flex: 1 !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  background: #04140b !important;
+  border: 1px solid var(--panel-border) !important;
+  border-radius: 8px !important;
+  overflow: hidden !important;
+  padding: 4px 6px !important;
+}
+
+.pbp-tray-head {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  margin-bottom: 3px !important;
+  flex-shrink: 0 !important;
+}
+
+.replay-pbp-scroll {
+  flex: 1 !important;
+  min-height: 0 !important;
   overflow-y: auto !important;
   overflow-x: hidden !important;
-  background: radial-gradient(circle at 50% 15%, #072617 0%, #03120a 60%, #010804 100%) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 2px !important;
+}
+
+.replay-boxscore-tab {
+  flex: 1 !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+/* Overlays en el Diamante */
+.replay-overlay-center {
+  position: absolute;
+  inset: 15px;
+  background: rgba(3, 16, 9, 0.95);
+  border: 2px solid var(--yellow);
+  border-radius: 12px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  z-index: 70;
+  padding: 14px;
+  box-shadow: 0 0 30px rgba(0,0,0,0.8);
+  animation: fadeIn 0.25s ease;
+}
+
+.game-over-overlay {
+  border-color: #facc15 !important;
+  box-shadow: 0 0 40px rgba(250, 204, 21, 0.35) !important;
+}
+
+.replay-mvp-container {
+  margin: 6px 0 !important;
+  max-width: 90% !important;
+}
+
+.stadium-run-score-popup {
+  position: absolute !important;
+  bottom: 22% !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  background: #facc15 !important;
+  color: #03120a !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+  padding: 3px 10px !important;
+  border-radius: 999px !important;
+  box-shadow: 0 0 16px rgba(250, 204, 21, 0.8) !important;
+  z-index: 60 !important;
+  pointer-events: none !important;
+  animation: scorePopFloat 1.2s ease-out forwards !important;
+}
+
+@keyframes scorePopFloat {
+  0% { opacity: 0; transform: translate(-50%, 0) scale(0.8); }
+  20% { opacity: 1; transform: translate(-50%, -15px) scale(1.1); }
+  80% { opacity: 1; transform: translate(-50%, -25px) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -35px) scale(0.9); }
 }
