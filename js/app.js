@@ -32,7 +32,6 @@
     series: [],
     events: [],
     settings: {
-      adminPin: 'admin123',
       leagueName: 'ROSMIL LEAGUE'
     }
   };
@@ -150,7 +149,10 @@
   if (!Array.isArray(db.series)) db.series = [];
   if (!Array.isArray(db.events)) db.events = [];
   if (!db.settings || typeof db.settings !== 'object') {
-    db.settings = { adminPin: 'admin123', leagueName: 'ROSMIL LEAGUE' };
+    db.settings = { leagueName: 'ROSMIL LEAGUE' };
+  }
+  if (db.settings.adminPin) {
+    delete db.settings.adminPin;
   }
 
   // Sanitización de jugadores y juegos
@@ -245,6 +247,254 @@
   };
 
   // ----------------------------------------------------
+  // SISTEMA DE SEGURIDAD Y HASHING (SHA-256)
+  // ----------------------------------------------------
+  function jsSha256(ascii) {
+    function rightRotate(value, amount) {
+      return (value >>> amount) | (value << (32 - amount));
+    }
+    const mathPow = Math.pow;
+    const maxWord = mathPow(2, 32);
+    let lengthProperty = 'length';
+    let i, j;
+    let result = '';
+    const words = [];
+    const asciiBitLength = ascii[lengthProperty] * 8;
+    let hash = [];
+    const k = [];
+    let primeCounter = 0;
+    const isComposite = {};
+    for (let candidate = 2; primeCounter < 64; candidate++) {
+      if (!isComposite[candidate]) {
+        for (i = candidate * candidate; i < 312; i += candidate) {
+          isComposite[i] = true;
+        }
+        if (primeCounter < 8) hash[primeCounter] = (mathPow(candidate, 0.5) * maxWord) | 0;
+        k[primeCounter] = (mathPow(candidate, 1 / 3) * maxWord) | 0;
+        primeCounter++;
+      }
+    }
+    ascii += '\x80';
+    while ((ascii[lengthProperty] % 64) - 56) ascii += '\x00';
+    for (i = 0; i < ascii[lengthProperty]; i++) {
+      j = ascii.charCodeAt(i);
+      if (j >> 8) return '';
+      words[i >> 2] |= j << ((3 - (i % 4)) * 8);
+    }
+    words[words[lengthProperty]] = (asciiBitLength / maxWord) | 0;
+    words[words[lengthProperty]] = asciiBitLength;
+    for (j = 0; j < words[lengthProperty]; ) {
+      const w = words.slice(j, (j += 16));
+      const oldHash = hash;
+      hash = hash.slice(0, 8);
+      for (i = 0; i < 64; i++) {
+        const w15 = w[i - 15], w2 = w[i - 2];
+        const a = hash[0], e = hash[4];
+        const temp1 =
+          hash[7] +
+          (rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25)) +
+          ((e & hash[5]) ^ (~e & hash[6])) +
+          k[i] +
+          (w[i] =
+            i < 16
+              ? w[i]
+              : (w[i - 16] +
+                  (rightRotate(w15, 7) ^ rightRotate(w15, 18) ^ (w15 >>> 3)) +
+                  w[i - 7] +
+                  (rightRotate(w2, 17) ^ rightRotate(w2, 19) ^ (w2 >>> 10))) |
+                0);
+        const temp2 =
+          (rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22)) +
+          ((a & hash[1]) ^ (a & hash[2]) ^ (hash[1] & hash[2]));
+        hash = [(temp1 + temp2) | 0].concat(hash);
+        hash[4] = (hash[4] + temp1) | 0;
+      }
+      for (i = 0; i < 8; i++) {
+        hash[i] = (hash[i] + oldHash[i]) | 0;
+      }
+    }
+    for (i = 0; i < 8; i++) {
+      for (let b = 3; b >= 0; b--) {
+        const byte = (hash[i] >> (b * 8)) & 255;
+        result += (byte < 16 ? '0' : '') + byte.toString(16);
+      }
+    }
+    return result;
+  }
+
+  async function sha256(message) {
+    const text = String(message ?? '');
+    if (window.crypto && window.crypto.subtle) {
+      try {
+        const msgBuffer = new TextEncoder().encode(text);
+        const hashBuffer = await window.crypto.subtle.digest('SHA-256', msgBuffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      } catch (e) {
+        console.warn('Fallback a sha256 puro:', e);
+      }
+    }
+    return jsSha256(text);
+  }
+
+  // ----------------------------------------------------
+  // GESTIÓN PRIVADA DE CREDENCIALES EN FIREBASE FIRESTORE
+  // ----------------------------------------------------
+  let adminAuthMode = 'login'; // 'login' | 'setup'
+
+  async function getFirebaseAdminCredentials() {
+    if (typeof firebaseInitialized !== 'undefined' && firebaseInitialized && firestoreDb) {
+      try {
+        const doc = await firestoreDb.collection('admin_auth').doc('credentials').get();
+        if (doc.exists) {
+          return doc.data();
+        }
+        return null;
+      } catch (err) {
+        console.error('Error consultando credenciales administrativas en Firebase:', err);
+        throw err;
+      }
+    }
+    return null;
+  }
+
+  async function setFirebaseAdminCredentials(username, password) {
+    const cleanUser = String(username || '').trim();
+    if (!cleanUser) {
+      throw new Error('El nombre de usuario es obligatorio.');
+    }
+    if (!password || password.length < 4) {
+      throw new Error('La contraseña debe tener un mínimo de 4 caracteres.');
+    }
+    const hash = await sha256(password);
+    const payload = {
+      username: cleanUser,
+      passwordHash: hash,
+      updatedAt: Date.now()
+    };
+
+    if (typeof firebaseInitialized !== 'undefined' && firebaseInitialized && firestoreDb) {
+      await firestoreDb.collection('admin_auth').doc('credentials').set(payload, { merge: true });
+      return payload;
+    } else {
+      throw new Error('Firebase no está conectado. No se pueden guardar credenciales.');
+    }
+  }
+
+  async function verifyAdminCredentials(inputUser, inputPass) {
+    const cleanUser = String(inputUser || '').trim().toLowerCase();
+    const cleanPass = String(inputPass || '');
+    if (!cleanUser || !cleanPass) {
+      return { status: 'invalid', message: 'Debes completar ambos campos.' };
+    }
+
+    let creds = null;
+    try {
+      creds = await getFirebaseAdminCredentials();
+    } catch (e) {
+      return { status: 'error', message: 'No se pudo conectar con Firebase para validar credenciales.' };
+    }
+
+    if (!creds || (!creds.username && !creds.passwordHash && !creds.password)) {
+      return { status: 'not_configured' };
+    }
+
+    const storedUser = String(creds.username || '').trim().toLowerCase();
+    const inputHash = await sha256(cleanPass);
+
+    const userMatches = storedUser === cleanUser;
+    const passMatches =
+      (creds.passwordHash && creds.passwordHash === inputHash) ||
+      (creds.password && creds.password === cleanPass);
+
+    if (userMatches && passMatches) {
+      // Si la contraseña estaba guardada en texto plano en Firebase Console, migrarla automáticamente a SHA-256
+      if (creds.password && typeof firebase !== 'undefined' && firestoreDb) {
+        try {
+          firestoreDb.collection('admin_auth').doc('credentials').update({
+            passwordHash: inputHash,
+            password: firebase.firestore.FieldValue.delete(),
+            updatedAt: Date.now()
+          });
+        } catch (e) {}
+      }
+      return { status: 'success', username: creds.username };
+    }
+
+    return { status: 'invalid', message: 'Usuario o contraseña incorrectos.' };
+  }
+
+  async function prepareAdminLoginModal() {
+    const userInput = $('#adminUserInput');
+    const passInput = $('#adminPassInput');
+    const passConfirmInput = $('#adminPassConfirmInput');
+    const passConfirmField = $('#adminPassConfirmField');
+    const noticeEl = $('#adminLoginNotice');
+    const errorEl = $('#adminLoginError');
+    const submitBtn = $('#adminLoginSubmitBtn');
+    const subtitleEl = $('#adminLoginSubtitle');
+    const passToggle = $('#adminPassToggle');
+
+    if (userInput) userInput.value = '';
+    if (passInput) {
+      passInput.value = '';
+      passInput.type = 'password';
+    }
+    if (passConfirmInput) passConfirmInput.value = '';
+    if (passToggle) passToggle.textContent = '👁️';
+    if (errorEl) errorEl.style.display = 'none';
+
+    // Verificar si Firebase ya tiene credenciales configuradas
+    try {
+      if (submitBtn) submitBtn.disabled = true;
+      if (noticeEl) {
+        noticeEl.className = 'notice info';
+        noticeEl.style.display = 'block';
+        noticeEl.innerHTML = '🔄 Verificando configuración en Firebase...';
+      }
+
+      const creds = await getFirebaseAdminCredentials();
+      if (!creds || (!creds.username && !creds.passwordHash && !creds.password)) {
+        // Primera configuración en Firebase
+        adminAuthMode = 'setup';
+        if (subtitleEl) subtitleEl.textContent = 'Configuración inicial privada de credenciales para la administración.';
+        if (passConfirmField) passConfirmField.style.display = 'block';
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Guardar Administrador en Firebase';
+        }
+        if (noticeEl) {
+          noticeEl.className = 'notice good';
+          noticeEl.style.display = 'block';
+          noticeEl.innerHTML = '⚙️ <b>Primera Configuración:</b> No se han definido credenciales en Firebase. Ingresa el usuario y la contraseña privada que utilizarás para administrar la liga.';
+        }
+      } else {
+        // Modo normal de inicio de sesión
+        adminAuthMode = 'login';
+        if (subtitleEl) subtitleEl.textContent = 'Ingresa tu usuario y contraseña de administrador para gestionar la liga.';
+        if (passConfirmField) passConfirmField.style.display = 'none';
+        if (noticeEl) noticeEl.style.display = 'none';
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Iniciar Sesión';
+        }
+      }
+    } catch (e) {
+      adminAuthMode = 'login';
+      if (passConfirmField) passConfirmField.style.display = 'none';
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Iniciar Sesión';
+      }
+      if (noticeEl) {
+        noticeEl.className = 'notice danger-box';
+        noticeEl.style.display = 'block';
+        noticeEl.innerHTML = '⚠️ No se pudo comprobar Firebase en este momento. Revisa tu conexión a internet.';
+      }
+    }
+  }
+
+  // ----------------------------------------------------
   // SISTEMA DE PERMISOS: ADMINISTRADOR
   // ----------------------------------------------------
   function checkAdmin(notify = true) {
@@ -268,7 +518,8 @@
       if (isAdmin) {
         btn.classList.add('is-admin');
         icon.textContent = '👑';
-        text.textContent = 'Modo Administrador';
+        const adminUser = sessionStorage.getItem('rosmil_admin_user');
+        text.textContent = adminUser ? `Admin (${adminUser})` : 'Modo Administrador';
       } else {
         btn.classList.remove('is-admin');
         icon.textContent = '👁️';
@@ -286,6 +537,9 @@
   }
 
   function save() {
+    if (db.settings && db.settings.adminPin) {
+      delete db.settings.adminPin;
+    }
     db.updatedAt = Date.now();
 
     try {
@@ -5035,19 +5289,37 @@
         </div>
 
         <div class="panel">
-          <h2>Parámetros y Seguridad</h2>
-          <p class="muted">Ajusta los parámetros generales de la liga o cierra tu sesión de administrador.</p>
+          <h2>Parámetros de la Liga</h2>
+          <p class="muted">Configuración general del nombre oficial de la competición.</p>
           <form id="settingsForm" style="margin-top:12px">
             <div class="field">
               <label>Nombre de la Liga</label>
               <input name="leagueName" value="${esc(db.settings?.leagueName || 'ROSMIL LEAGUE')}">
             </div>
+            <div class="formactions" style="margin-top:14px">
+              <button type="submit" class="btn yellow">Guardar Nombre</button>
+            </div>
+          </form>
+
+          <hr style="border:none;border-top:1px solid var(--panel-border);margin:20px 0;">
+
+          <h2>Seguridad y Credenciales (Firebase)</h2>
+          <p class="muted">Configuración privada almacenada en Firebase Firestore. Solo quien tenga estas credenciales podrá acceder al modo administrador.</p>
+          <form id="adminSecurityForm" style="margin-top:12px">
+            <div class="field">
+              <label>Usuario Administrativo</label>
+              <input id="adminSecUser" type="text" placeholder="Usuario administrador" required autocomplete="username">
+            </div>
             <div class="field" style="margin-top:10px">
-              <label>Nueva Clave de Administrador (PIN)</label>
-              <input name="adminPin" type="password" value="${esc(db.settings?.adminPin || 'admin123')}">
+              <label>Nueva Contraseña</label>
+              <input id="adminSecPass" type="password" placeholder="Dejar en blanco para mantener la actual" autocomplete="new-password">
+            </div>
+            <div class="field" style="margin-top:10px">
+              <label>Confirmar Nueva Contraseña</label>
+              <input id="adminSecPassConfirm" type="password" placeholder="Repetir nueva contraseña" autocomplete="new-password">
             </div>
             <div class="formactions" style="margin-top:14px">
-              <button type="submit" class="btn yellow">Guardar Parámetros</button>
+              <button type="submit" class="btn yellow" id="adminSecBtn">🔐 Actualizar Credenciales en Firebase</button>
               <button type="button" class="btn danger" id="adminLogoutBtn">Cerrar Sesión Admin</button>
             </div>
           </form>
@@ -5060,21 +5332,98 @@
         <button class="btn danger-strong" id="clearData">Borrar todos los datos de la liga</button>
       </div>`;
 
-    // Handler de guardado de configuración
+    // Cargar usuario actual desde Firebase para el formulario de seguridad
+    getFirebaseAdminCredentials()
+      .then(creds => {
+        const uField = $('#adminSecUser');
+        if (uField && creds?.username) {
+          uField.value = creds.username;
+        } else if (uField) {
+          uField.value = sessionStorage.getItem('rosmil_admin_user') || '';
+        }
+      })
+      .catch(() => {
+        const uField = $('#adminSecUser');
+        if (uField) {
+          uField.value = sessionStorage.getItem('rosmil_admin_user') || '';
+        }
+      });
+
+    // Handler de guardado de nombre de liga
     $('#settingsForm').onsubmit = e => {
       e.preventDefault();
       if (!checkAdmin()) return;
       const f = new FormData(e.target);
       db.settings.leagueName = f.get('leagueName') || 'ROSMIL LEAGUE';
-      db.settings.adminPin = f.get('adminPin') || 'admin123';
       save();
       alert('Parámetros de la liga actualizados correctamente.');
+    };
+
+    // Handler de guardado de credenciales privadas en Firebase
+    $('#adminSecurityForm').onsubmit = async e => {
+      e.preventDefault();
+      if (!checkAdmin()) return;
+      const u = $('#adminSecUser')?.value?.trim();
+      const p = $('#adminSecPass')?.value;
+      const pc = $('#adminSecPassConfirm')?.value;
+      const btn = $('#adminSecBtn');
+
+      if (!u) {
+        alert('El usuario administrativo no puede estar vacío.');
+        return;
+      }
+
+      if (p) {
+        if (p.length < 4) {
+          alert('La nueva contraseña debe tener al menos 4 caracteres.');
+          return;
+        }
+        if (p !== pc) {
+          alert('Las contraseñas no coinciden. Por favor verifícalas.');
+          return;
+        }
+      }
+
+      try {
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = 'Guardando en Firebase...';
+        }
+
+        if (p) {
+          await setFirebaseAdminCredentials(u, p);
+        } else {
+          if (typeof firebaseInitialized !== 'undefined' && firebaseInitialized && firestoreDb) {
+            await firestoreDb.collection('admin_auth').doc('credentials').set({
+              username: u,
+              updatedAt: Date.now()
+            }, { merge: true });
+          } else {
+            throw new Error('Firebase no está disponible.');
+          }
+        }
+
+        sessionStorage.setItem('rosmil_admin_user', u);
+        alert('✅ Credenciales administrativas actualizadas exitosamente en Firebase.');
+        if ($('#adminSecPass')) $('#adminSecPass').value = '';
+        if ($('#adminSecPassConfirm')) $('#adminSecPassConfirm').value = '';
+        updateRoleUI();
+      } catch (err) {
+        alert('Error al guardar credenciales en Firebase: ' + (err.message || err));
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '🔐 Actualizar Credenciales en Firebase';
+        }
+      }
     };
 
     // Logout
     $('#adminLogoutBtn').onclick = () => {
       isAdmin = false;
       sessionStorage.removeItem('rosmil_is_admin');
+      sessionStorage.removeItem('rosmil_admin_user');
+      localStorage.removeItem('rosmil_is_admin');
       updateRoleUI();
       renderAll();
       show('home');
@@ -5094,7 +5443,7 @@
             seasons: [],
             series: [],
             events: [],
-            settings: { adminPin: 'admin123', leagueName: 'ROSMIL LEAGUE' }
+            settings: { leagueName: 'ROSMIL LEAGUE' }
           };
           if (typeof firebaseInitialized !== 'undefined' && firebaseInitialized && firestoreDb) {
             firestoreDb.collection('leagues').doc('main').set(db);
@@ -5544,6 +5893,7 @@
     if (mid === 'seasonModal') prepareSeasonModal();
     if (mid === 'seriesModal') prepareSeriesModal();
     if (mid === 'gameModal') prepareGameModal();
+    if (mid === 'adminLoginModal') prepareAdminLoginModal();
   }
 
   function readImage(file, cb) {
@@ -5880,6 +6230,7 @@
         if (confirm('¿Deseas salir del Modo Administrador y volver a Modo Espectador?')) {
           isAdmin = false;
           sessionStorage.removeItem('rosmil_is_admin');
+          sessionStorage.removeItem('rosmil_admin_user');
           localStorage.removeItem('rosmil_is_admin');
           updateRoleUI();
           renderAll();
@@ -5889,22 +6240,133 @@
       }
     });
 
-    // Formulario de login de Administrador
-    $('#adminLoginForm').addEventListener('submit', e => {
+    // Toggle para ver / ocultar contraseña en el login
+    const passToggleBtn = $('#adminPassToggle');
+    if (passToggleBtn) {
+      passToggleBtn.addEventListener('click', () => {
+        const passIn = $('#adminPassInput');
+        if (passIn) {
+          if (passIn.type === 'password') {
+            passIn.type = 'text';
+            passToggleBtn.textContent = '🙈';
+          } else {
+            passIn.type = 'password';
+            passToggleBtn.textContent = '👁️';
+          }
+        }
+      });
+    }
+
+    // Formulario de login / configuración de Administrador
+    $('#adminLoginForm').addEventListener('submit', async e => {
       e.preventDefault();
-      const pin = $('#adminPinInput').value;
-      const expected = db.settings?.adminPin || 'admin123';
-      if (pin === expected) {
-        isAdmin = true;
-        sessionStorage.setItem('rosmil_is_admin', 'true');
-        localStorage.setItem('rosmil_is_admin', 'true');
-        $('#adminLoginError').style.display = 'none';
-        closeModals();
-        updateRoleUI();
-        renderAll();
-        alert('✅ Acceso concedido: Modo Administrador activado.');
+      const user = $('#adminUserInput')?.value?.trim();
+      const pass = $('#adminPassInput')?.value;
+      const passConfirm = $('#adminPassConfirmInput')?.value;
+      const errorEl = $('#adminLoginError');
+      const submitBtn = $('#adminLoginSubmitBtn');
+
+      if (errorEl) errorEl.style.display = 'none';
+
+      if (adminAuthMode === 'setup') {
+        if (!user) {
+          if (errorEl) {
+            errorEl.textContent = 'Debes ingresar un nombre de usuario.';
+            errorEl.style.display = 'block';
+          }
+          return;
+        }
+        if (!pass || pass.length < 4) {
+          if (errorEl) {
+            errorEl.textContent = 'La contraseña debe tener al menos 4 caracteres.';
+            errorEl.style.display = 'block';
+          }
+          return;
+        }
+        if (pass !== passConfirm) {
+          if (errorEl) {
+            errorEl.textContent = 'Las contraseñas no coinciden. Por favor verifícalas.';
+            errorEl.style.display = 'block';
+          }
+          return;
+        }
+
+        try {
+          if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Guardando en Firebase...';
+          }
+          await setFirebaseAdminCredentials(user, pass);
+          isAdmin = true;
+          sessionStorage.setItem('rosmil_is_admin', 'true');
+          sessionStorage.setItem('rosmil_admin_user', user);
+          localStorage.setItem('rosmil_is_admin', 'true');
+          closeModals();
+          updateRoleUI();
+          renderAll();
+          alert('✅ Administrador configurado y guardado de forma privada en Firebase.');
+        } catch (err) {
+          if (errorEl) {
+            errorEl.textContent = 'Error al registrar en Firebase: ' + (err.message || err);
+            errorEl.style.display = 'block';
+          }
+        } finally {
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Guardar Administrador en Firebase';
+          }
+        }
       } else {
-        $('#adminLoginError').style.display = 'block';
+        // Modo login
+        if (!user || !pass) {
+          if (errorEl) {
+            errorEl.textContent = 'Ingresa tu usuario y contraseña.';
+            errorEl.style.display = 'block';
+          }
+          return;
+        }
+
+        try {
+          if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Verificando en Firebase...';
+          }
+
+          const res = await verifyAdminCredentials(user, pass);
+          if (res.status === 'success') {
+            isAdmin = true;
+            sessionStorage.setItem('rosmil_is_admin', 'true');
+            sessionStorage.setItem('rosmil_admin_user', res.username || user);
+            localStorage.setItem('rosmil_is_admin', 'true');
+            if (errorEl) errorEl.style.display = 'none';
+            closeModals();
+            updateRoleUI();
+            renderAll();
+            alert('✅ Acceso concedido: Modo Administrador activado.');
+          } else if (res.status === 'not_configured') {
+            await prepareAdminLoginModal();
+          } else {
+            if (errorEl) {
+              errorEl.textContent = res.message || 'Usuario o contraseña incorrectos.';
+              errorEl.style.display = 'block';
+            }
+            const passIn = $('#adminPassInput');
+            if (passIn) {
+              passIn.value = '';
+              passIn.focus();
+            }
+          }
+        } catch (err) {
+          if (errorEl) {
+            errorEl.textContent = 'Error al verificar credenciales: ' + (err.message || err);
+            errorEl.style.display = 'block';
+          }
+        } finally {
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Iniciar Sesión';
+          }
+        }
       }
     });
 
@@ -6759,8 +7221,11 @@
                   series: Array.isArray(cloudData.series) ? cloudData.series : [],
                   events: Array.isArray(cloudData.events) ? cloudData.events : [],
                   updatedAt: cloudUpdated,
-                  settings: cloudData.settings || db.settings || { adminPin: 'admin123', leagueName: 'ROSMIL LEAGUE' }
+                  settings: cloudData.settings || db.settings || { leagueName: 'ROSMIL LEAGUE' }
                 };
+                if (db.settings && db.settings.adminPin) {
+                  delete db.settings.adminPin;
+                }
                 db.games.forEach(g => {
                   if (!Array.isArray(g.batLog)) g.batLog = [];
                 });
@@ -6805,6 +7270,11 @@
     advanceToNextInning,
     finishLiveGame,
     getLiveGameState: () => liveGameState,
-    getDb: () => db
+    getDb: () => db,
+    getFirebaseAdminCredentials,
+    setFirebaseAdminCredentials,
+    verifyAdminCredentials,
+    prepareAdminLoginModal,
+    sha256
   };
 })();

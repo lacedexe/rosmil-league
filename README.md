@@ -88,7 +88,4 @@
 
 1. Clona el repositorio o abre la carpeta del proyecto.
 2. Abre `index.html` en cualquier navegador web moderno.
-3. Para operar como Administrador y registrar partidos en vivo, haz clic en el botón superior derecho e introduce el PIN por defecto:
-   ```text
-   admin123
-   ```
+3. Para operar como Administrador y registrar partidos en vivo, haz clic en el botón superior derecho (Modo Espectador / Modo Administrador). En el primer inicio, el sistema te solicitará configurar tu usuario y contraseña privada que se guardarán encriptados en Firebase Firestore. Solo las personas con estas credenciales podrán acceder a las funciones administrativas.

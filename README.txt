@@ -54,4 +54,5 @@ NOVEDADES DE LA VERSIÓN 0.3:
 
 CÓMO EJECUTAR:
 Abre el archivo 'index.html' en tu navegador web.
-Para acceder a la administración y anotación en vivo, utiliza el PIN 'admin123'.
+Para acceder a la administración y anotación en vivo, utiliza tu usuario y contraseña configurados de forma privada en Firebase Firestore.
+

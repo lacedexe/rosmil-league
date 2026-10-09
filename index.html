@@ -813,19 +813,38 @@
   <!-- Modal: Acceso de Administrador -->
   <div class="modal" id="adminLoginModal">
     <div class="modalbox small">
-      <h2>Acceso de Administrador</h2>
-      <p class="muted">Ingresa la clave de administrador para gestionar parámetros, equipos, jugadores y temporadas.</p>
+      <h2 id="adminLoginTitle">Acceso de Administrador</h2>
+      <p class="muted" id="adminLoginSubtitle">Ingresa tu usuario y contraseña para gestionar la liga y anotar partidos.</p>
+      
+      <!-- Aviso dinámico para configuración en Firebase -->
+      <div id="adminLoginNotice" class="notice info" style="display:none; margin: 12px 0;"></div>
+
       <form id="adminLoginForm">
         <div class="field">
-          <label>Clave de Administrador</label>
-          <input type="password" id="adminPinInput" placeholder="Introduce la clave" required autofocus>
-          <small class="muted" style="margin-top: 6px; display: block;">Clave por defecto: <b>admin123</b></small>
+          <label>Usuario Administrativo</label>
+          <input type="text" id="adminUserInput" placeholder="Introduce tu usuario" required autocomplete="username" autofocus>
         </div>
-        <div id="adminLoginError" class="notice danger-box" style="display:none; margin-top: 12px;">
-          Clave incorrecta. Por favor intenta de nuevo.
+
+        <div class="field" style="margin-top: 14px;">
+          <label>Contraseña</label>
+          <div style="position:relative; display:flex; align-items:center;">
+            <input type="password" id="adminPassInput" placeholder="Introduce tu contraseña" required autocomplete="current-password" style="padding-right: 42px; width: 100%;">
+            <button type="button" id="adminPassToggle" title="Mostrar/ocultar contraseña" style="position:absolute; right:8px; background:transparent; border:none; color:var(--yellow); font-size:16px; cursor:pointer; padding:6px;">👁️</button>
+          </div>
         </div>
-        <div class="formactions">
-          <button type="submit" class="btn yellow">Iniciar Sesión</button>
+
+        <!-- Campo adicional sólo si es primera configuración en Firebase -->
+        <div class="field" id="adminPassConfirmField" style="display:none; margin-top: 14px;">
+          <label>Confirmar Contraseña</label>
+          <input type="password" id="adminPassConfirmInput" placeholder="Repite la contraseña" autocomplete="new-password">
+        </div>
+
+        <div id="adminLoginError" class="notice danger-box" style="display:none; margin-top: 14px;">
+          Usuario o contraseña incorrectos.
+        </div>
+
+        <div class="formactions" style="margin-top: 18px;">
+          <button type="submit" class="btn yellow" id="adminLoginSubmitBtn">Iniciar Sesión</button>
           <button type="button" class="btn close">Cancelar</button>
         </div>
       </form>
@@ -1637,6 +1656,6 @@
   <!-- Firebase Configuration -->
   <script src="js/firebase-config.js"></script>
   <!-- Application Logic -->
-  <script src="js/app.js?v=rosmil_0.3.2"></script>
+  <script src="js/app.js?v=rosmil_0.3.3"></script>
 </body>
 </html>
