@@ -1708,7 +1708,7 @@ tr:hover td {
 /* Grid de la Consola en Vivo: Diamante a la Izquierda y Controles a la Derecha */
 .live-console-grid {
   display: grid !important;
-  grid-template-columns: minmax(320px, 440px) minmax(360px, 1fr) !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
   gap: 12px !important;
   flex: 1 !important;
   min-height: 0 !important;
@@ -2407,10 +2407,22 @@ tr:hover td {
   width: 100%;
   flex: 1;
   min-height: 0;
-  height: auto;
+  height: 100%;
   background: radial-gradient(circle at 50% 90%, #15522e 0%, #082d19 50%, #03140a 100%);
   overflow: hidden;
   user-select: none;
+  --f-center-y: 52%;
+  --diamond-r: 175px;
+  --diamond-size: 250px;
+  --inner-turf-size: 160px;
+}
+
+@media (max-width: 1100px), (max-height: 680px) {
+  .stadium-2d-canvas {
+    --diamond-r: 145px;
+    --diamond-size: 205px;
+    --inner-turf-size: 130px;
+  }
 }
 
 .stadium-outfield-turf {
@@ -2425,10 +2437,10 @@ tr:hover td {
 .stadium-warning-strip {
   position: absolute;
   top: -30px;
-  left: 5%;
-  right: 5%;
-  height: 180px;
-  border-bottom: 12px solid #854d0e;
+  left: 4%;
+  right: 4%;
+  height: 200px;
+  border-bottom: 14px solid #854d0e;
   border-radius: 50%;
   opacity: 0.75;
   pointer-events: none;
@@ -2464,8 +2476,8 @@ tr:hover td {
 }
 
 .fielder-avatar-slot {
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   border: 1.5px solid var(--yellow);
   background: #04140b;
@@ -2507,54 +2519,61 @@ tr:hover td {
   border: 1px solid rgba(255, 255, 255, 0.15);
   padding: 1px 4px;
   border-radius: 3px;
-  max-width: 58px;
+  max-width: 68px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 /* Posiciones de Jardineros e Infielders */
-.stadium-fielder-node.cf { top: 11%; left: 50%; }
-.stadium-fielder-node.lf { top: 22%; left: 16%; }
-.stadium-fielder-node.rf { top: 22%; left: 84%; }
-.stadium-fielder-node.ss { top: 38%; left: 33%; }
-.stadium-fielder-node.b2 { top: 38%; left: 67%; }
-.stadium-fielder-node.b3 { top: 55%; left: 14%; }
-.stadium-fielder-node.b1 { top: 55%; left: 86%; }
-.stadium-fielder-node.c  { top: 89%; left: 50%; }
+.stadium-fielder-node.cf { top: 10%; left: 50%; }
+.stadium-fielder-node.lf { top: 22%; left: calc(50% - 230px); }
+.stadium-fielder-node.rf { top: 22%; left: calc(50% + 230px); }
+.stadium-fielder-node.ss { top: calc(var(--f-center-y) - 95px); left: calc(50% - 105px); }
+.stadium-fielder-node.b2 { top: calc(var(--f-center-y) - 95px); left: calc(50% + 105px); }
+.stadium-fielder-node.b3 { top: calc(var(--f-center-y) + 6px); left: calc(50% - var(--diamond-r) - 34px); }
+.stadium-fielder-node.b1 { top: calc(var(--f-center-y) + 6px); left: calc(50% + var(--diamond-r) + 34px); }
+.stadium-fielder-node.c  { top: calc(var(--f-center-y) + var(--diamond-r) + 48px); left: 50%; }
+
+@media (max-width: 1100px), (max-height: 680px) {
+  .stadium-fielder-node.lf { left: calc(50% - 180px); }
+  .stadium-fielder-node.rf { left: calc(50% + 180px); }
+  .stadium-fielder-node.ss { top: calc(var(--f-center-y) - 75px); left: calc(50% - 85px); }
+  .stadium-fielder-node.b2 { top: calc(var(--f-center-y) - 75px); left: calc(50% + 85px); }
+}
 
 /* Infield de Arcilla (Rotado 45 Grados) */
 .stadium-clay-diamond {
   position: absolute;
-  width: 200px;
-  height: 200px;
+  width: var(--diamond-size);
+  height: var(--diamond-size);
   background: #9a491e;
   left: 50%;
-  top: 53%;
+  top: var(--f-center-y);
   transform: translate(-50%, -50%) rotate(45deg);
-  border-radius: 14px;
-  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5), 0 0 15px rgba(0, 0, 0, 0.3);
+  border-radius: 16px;
+  box-shadow: inset 0 0 22px rgba(0, 0, 0, 0.5), 0 0 16px rgba(0, 0, 0, 0.35);
 }
 
 .stadium-inner-turf {
   position: absolute;
-  width: 125px;
-  height: 125px;
+  width: var(--inner-turf-size);
+  height: var(--inner-turf-size);
   background: #15693b;
   left: 50%;
-  top: 53%;
+  top: var(--f-center-y);
   transform: translate(-50%, -50%) rotate(45deg);
-  border-radius: 10px;
-  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.35);
+  border-radius: 12px;
+  box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.35);
 }
 
 /* Líneas de Cal (Foul Lines) */
 .stadium-foul-line {
   position: absolute;
   width: 2px;
-  height: 340px;
-  background: rgba(255, 255, 255, 0.7);
-  bottom: 22%;
+  height: 460px;
+  background: rgba(255, 255, 255, 0.75);
+  bottom: calc(100% - (var(--f-center-y) + var(--diamond-r)));
   pointer-events: none;
   transform-origin: bottom center;
 }
@@ -2651,24 +2670,24 @@ tr:hover td {
   z-index: 15;
 }
 
-.stadium-base.base-2b { left: 50%; top: 25%; }
-.stadium-base.base-3b { left: 21%; top: 53%; }
-.stadium-base.base-1b { left: 79%; top: 53%; }
-.stadium-base.base-home { left: 50%; top: 78%; }
+.stadium-base.base-2b { left: 50%; top: calc(var(--f-center-y) - var(--diamond-r)); }
+.stadium-base.base-3b { left: calc(50% - var(--diamond-r)); top: var(--f-center-y); }
+.stadium-base.base-1b { left: calc(50% + var(--diamond-r)); top: var(--f-center-y); }
+.stadium-base.base-home { left: 50%; top: calc(var(--f-center-y) + var(--diamond-r)); }
 
 .base-pillow {
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
   background: #ffffff;
   transform: rotate(45deg);
-  border-radius: 2px;
+  border-radius: 3px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
   border: 1px solid #cbd5e1;
 }
 
 .base-homeplate {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   background: #ffffff;
   clip-path: polygon(50% 100%, 0% 40%, 0% 0%, 100% 0%, 100% 40%);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
@@ -3950,7 +3969,7 @@ tr:hover td {
 /* Grid del Teatro Replay 2D */
 .replay-theater-grid {
   display: grid !important;
-  grid-template-columns: minmax(320px, 440px) minmax(360px, 1fr) !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
   gap: 12px !important;
   flex: 1 !important;
   min-height: 0 !important;
